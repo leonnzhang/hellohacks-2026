@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Relay Memory",
+  "version": "0.1.0",
+  "description": "Carry conversations and your saved memories between AI chats.",
+  "permissions": ["storage", "tabs", "sidePanel", "contextMenus", "scripting"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Open Relay Memory" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

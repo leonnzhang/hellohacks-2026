@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relay Memory</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">↗</span><div><strong>Relay Memory</strong><small>Your context, wherever you chat</small></div></div>
+    <span class="local-pill">Local only</span>
+  </header>
+
+  <nav class="tabs" aria-label="Sections">
+    <button class="tab active" data-view="handoff">Handoff</button>
+    <button class="tab" data-view="memory">Memory</button>
+  </nav>
+
+  <main>
+    <section id="handoff-view" class="view">
+      <section class="card">
+        <div class="section-heading"><div><span class="step">1</span><h2>Capture a conversation</h2></div></div>
+        <p class="muted">Open a ChatGPT, Claude, or Gemini chat. Capture creates a draft; save it when it looks right.</p>
+        <button id="capture-btn" class="button primary full">Capture current tab</button>
+        <label for="chat-select">Saved conversations <span id="chat-count" class="hint">(0)</span></label>
+        <select id="chat-select"><option value="">New unsaved conversation</option></select>
+        <label for="transcript">Conversation text <span class="hint">editable</span></label>
+        <textarea id="transcript" rows="8" placeholder="Captured messages appear here. You can also paste a conversation manually."></textarea>
+        <div class="row"><input id="chat-title" type="text" placeholder="Conversation title" aria-label="Conversation title"><button id="save-chat-btn" class="button subtle">Save conversation</button><button id="delete-chat-btn" class="button danger" title="Delete selected conversation">Delete</button></div>
+        <p id="save-state" class="save-state" role="status">No conversation saved yet.</p>
+      </section>
+
+      <section class="card">
+        <div class="section-heading"><div><span class="step">2</span><h2>Add relevant memory</h2></div><button id="manage-memory-btn" class="text-button">Manage</button></div>
+        <p class="muted">Save a lasting fact, then choose which memories to include. Saving a conversation does not automatically turn its whole transcript into memory.</p>
+        <label for="quick-memory-text">New memory</label>
+        <textarea id="quick-memory-text" rows="3" placeholder="Type a fact to remember, or select text in the conversation above."></textarea>
+        <div class="action-row"><button id="use-selection-btn" class="button subtle">Use selected text</button><button id="save-quick-memory-btn" class="button primary">Save memory</button></div>
+        <div id="memory-choices" class="choice-list"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-heading"><div><span class="step">3</span><h2>Continue elsewhere</h2></div></div>
+        <label for="destination">Destination</label>
+        <select id="destination">
+          <option value="ChatGPT">ChatGPT</option>
+          <option value="Claude">Claude</option>
+          <option value="Gemini">Gemini</option>
+        </select>
+        <label for="next-request">What do you want to ask next?</label>
+        <textarea id="next-request" rows="3" placeholder="Optional: add your next question here"></textarea>
+        <label for="prompt-preview">Context prompt <span class="hint">editable before transfer</span></label>
+        <textarea id="prompt-preview" rows="10" placeholder="Your handoff prompt will appear here."></textarea>
+        <div class="action-row"><button id="copy-btn" class="button subtle">Copy prompt</button><button id="continue-btn" class="button primary">Open &amp; fill</button></div>
+        <p class="fineprint">The extension fills the composer. You review and send the message.</p>
+      </section>
+    </section>
+
+    <section id="memory-view" class="view hidden">
+      <section class="card">
+        <div class="section-heading"><div><span class="step star">✦</span><h2>Shared memory</h2></div></div>
+        <p class="muted">Save preferences, project facts, and decisions to reuse across chats.</p>
+        <label for="memory-text">Memory</label>
+        <textarea id="memory-text" rows="4" placeholder="Example: Our hackathon project is a Chrome extension and all data stays in chrome.storage.local."></textarea>
+        <label for="memory-project">Project tag <span class="hint">optional</span></label>
+        <input id="memory-project" type="text" placeholder="e.g. Relay Memory">
+        <div class="action-row"><button id="cancel-edit-btn" class="button subtle hidden">Cancel</button><button id="save-memory-btn" class="button primary">Save memory</button></div>
+      </section>
+      <section class="card">
+        <div class="section-heading"><div><h2>Saved memories</h2></div><span id="memory-count" class="count">0</span></div>
+        <div id="memory-list" class="memory-list"></div>
+      </section>
+    </section>
+  </main>
+
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
