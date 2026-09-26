@@ -1,10 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Relay Memory",
-  "version": "0.1.0",
+  "version": "0.7.1",
+  "minimum_chrome_version": "116",
   "description": "Carry conversations and your saved memories between AI chats.",
   "permissions": ["storage", "tabs", "sidePanel", "contextMenus", "scripting"],
   "host_permissions": [
+    "https://api.openai.com/*",
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://claude.ai/*",

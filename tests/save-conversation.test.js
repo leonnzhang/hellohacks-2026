@@ -36,6 +36,8 @@ function panelHarness() {
     setTimeout: () => 1,
     clearTimeout: () => {}
   });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "memory-policy.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "transfer-core.js"), "utf8"), context);
   const source = fs.readFileSync(path.join(__dirname, "..", "sidepanel.js"), "utf8")
     .replace(/init\(\)\.catch\([\s\S]*$/, "");
   vm.runInContext(source, context);
@@ -95,4 +97,26 @@ test("Capture stays unsaved until Save conversation is clicked", async () => {
   assert.equal(await vm.runInContext("saveChat()", context), true);
   assert.equal(storage.chats.length, 1);
   assert.equal(element("chat-select").value, storage.chats[0].id);
+});
+
+test("handoff includes core memory and excludes older noncore records", () => {
+  const { context, element } = panelHarness();
+  const state = vm.runInContext("state", context);
+  state.memories = [
+    { id: "global", text: "I prefer concise answers.", scope: "global" },
+    { id: "retired", text: "I am learning Rust this year.", scope: "global", origin: "automatic", category: "ongoing_goal" },
+    { id: "hobby", text: "I enjoy hiking.", scope: "global", origin: "automatic", category: "hobbies_interests" },
+    { id: "match", text: "Our hackathon project uses a Chrome extension.", scope: "topic" },
+    { id: "other", text: "My garden has tomatoes.", scope: "topic" },
+    { id: "unscoped", text: "An older memory with no scope." }
+  ];
+  element("next-request").value = "Help with the hackathon extension";
+  vm.runInContext("refreshPrompt()", context);
+  assert.match(element("prompt-preview").value, /I prefer concise answers/);
+  assert.doesNotMatch(element("prompt-preview").value, /hackathon project/);
+  assert.doesNotMatch(element("prompt-preview").value, /garden has tomatoes/);
+  assert.doesNotMatch(element("prompt-preview").value, /older memory/);
+  assert.doesNotMatch(element("prompt-preview").value, /learning Rust/);
+  assert.match(element("prompt-preview").value, /I enjoy hiking/);
+  assert.match(element("auto-memory-summary").textContent, /2 core memories/);
 });

@@ -1,17 +1,14 @@
-const DESTINATIONS = {
-  ChatGPT: "https://chatgpt.com/",
-  Claude: "https://claude.ai/new",
-  Gemini: "https://gemini.google.com/app"
-};
-const MAX_PROMPT_TRANSCRIPT = 20000;
+const DESTINATIONS = globalThis.RELAY_TRANSFER.destinations;
 let handoffTemplate = null;
 
 const $ = (id) => document.getElementById(id);
 const state = {
   chats: [],
   memories: [],
+  memorySuggestions: [],
+  autoMemorySettings: { enabled: false, apiKey: "" },
+  autoMemoryLastError: "",
   selectedChatId: "",
-  selectedMemoryIds: new Set(),
   editingMemoryId: "",
   draftSource: "Manual",
   draftUrl: ""
@@ -28,29 +25,17 @@ function status(message, error = false) {
 }
 
 function formatTranscript(messages) {
-  return messages.map(({ role, text }) => `${role.toUpperCase()}:\n${text}`).join("\n\n");
-}
-
-function shortTranscript(text) {
-  if (text.length <= MAX_PROMPT_TRANSCRIPT) return text;
-  const head = text.slice(0, 3500);
-  const tail = text.slice(-(MAX_PROMPT_TRANSCRIPT - 3500));
-  return `${head}\n\n${handoffTemplate.truncationNotice}\n\n${tail}`;
+  return globalThis.RELAY_TRANSFER.formatTranscript(messages);
 }
 
 function buildPrompt() {
   if (!handoffTemplate) return "";
-  const transcript = $("transcript").value.trim();
-  const chosen = state.memories.filter((memory) => state.selectedMemoryIds.has(memory.id));
-  const nextRequest = $("next-request").value.trim();
-  if (!transcript && !chosen.length && !nextRequest) return "";
-  const sections = [handoffTemplate.intro];
-  if (chosen.length) {
-    sections.push(handoffTemplate.memoryHeading + "\n" + chosen.map((memory) => `- ${memory.project ? `[${memory.project}] ` : ""}${memory.text}`).join("\n"));
-  }
-  if (transcript) sections.push(handoffTemplate.conversationHeading + "\n" + shortTranscript(transcript));
-  sections.push(`${handoffTemplate.nextRequestHeading}\n${nextRequest || handoffTemplate.emptyNextRequest}`);
-  return sections.join(handoffTemplate.separator);
+  return globalThis.RELAY_TRANSFER.buildPrompt({
+    transcript: $("transcript").value,
+    nextRequest: $("next-request").value,
+    memories: pickMemories(state.memories),
+    template: handoffTemplate
+  });
 }
 
 async function loadHandoffTemplate() {
@@ -65,6 +50,15 @@ async function loadHandoffTemplate() {
 
 function refreshPrompt() {
   $("prompt-preview").value = buildPrompt();
+  const chosen = pickMemories(state.memories);
+  const count = chosen.length;
+  $("auto-memory-summary").textContent = count
+    ? `${count} core ${count === 1 ? "memory" : "memories"} included automatically. Review the prompt below.`
+    : "No core memories saved yet. You can manage memories in the Memory tab.";
+}
+
+function pickMemories(memories) {
+  return globalThis.RELAY_TRANSFER.pickMemories(memories);
 }
 
 function setSaveState(message, unsaved = false) {
@@ -76,6 +70,25 @@ function switchView(view) {
   for (const button of document.querySelectorAll(".tab")) button.classList.toggle("active", button.dataset.view === view);
   $("handoff-view").classList.toggle("hidden", view !== "handoff");
   $("memory-view").classList.toggle("hidden", view !== "memory");
+}
+
+async function syncChatTheme() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+    const theme = await chrome.tabs.sendMessage(tab.id, { type: "GET_CHAT_THEME" });
+    if (!theme?.surface || !theme?.text) return;
+    const root = document.documentElement;
+    root.dataset.themeDark = String(!!theme.dark);
+    root.dataset.sourceService = theme.service || "";
+    for (const [name, value] of Object.entries({
+      "--ui-bg": theme.background, "--ui-surface": theme.surface,
+      "--ui-text": theme.text, "--ui-muted": theme.muted,
+      "--ui-border": theme.border, "--ui-accent": theme.accent,
+      "--ui-accent-text": theme.dark ? "#17202a" : "#ffffff",
+      "--ui-font": theme.fontFamily, "--ui-radius": theme.radius
+    })) root.style.setProperty(name, value);
+  } catch { /* Use the neutral fallback outside a supported chat. */ }
 }
 
 function renderChats() {
@@ -99,44 +112,67 @@ function makeEmpty(text) {
   return empty;
 }
 
+function renderMemoryPolicy() {
+  const list = $("memory-policy-list");
+  list.replaceChildren();
+  for (const category of globalThis.MEMORY_POLICY.categories) {
+    const row = document.createElement("div");
+    row.className = "policy-item";
+    const title = document.createElement("strong");
+    title.textContent = category.label;
+    const detail = document.createElement("p");
+    detail.textContent = `${category.saveWhen} Example: “${category.example}”`;
+    row.append(title, detail);
+    list.append(row);
+  }
+  const skipped = $("memory-policy-skip");
+  skipped.replaceChildren();
+  for (const rule of globalThis.MEMORY_POLICY.skipRules) {
+    const item = document.createElement("li");
+    item.textContent = rule;
+    skipped.append(item);
+  }
+}
+
 function renderMemories() {
-  const choices = $("memory-choices");
   const list = $("memory-list");
-  choices.replaceChildren();
   list.replaceChildren();
   $("memory-count").textContent = String(state.memories.length);
   if (!state.memories.length) {
-    choices.append(makeEmpty("No saved memories yet. Add one in the Memory tab, or select text on a chat page and use the right-click menu."));
     list.append(makeEmpty("Memories you save will appear here."));
     return;
   }
   for (const memory of state.memories) {
-    const choice = document.createElement("label");
-    choice.className = "choice";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = state.selectedMemoryIds.has(memory.id);
-    checkbox.addEventListener("change", () => {
-      if (checkbox.checked) state.selectedMemoryIds.add(memory.id);
-      else state.selectedMemoryIds.delete(memory.id);
-      refreshPrompt();
-    });
-    const description = document.createElement("span");
-    description.className = "choice-text";
-    description.textContent = memory.project ? `[${memory.project}] ${memory.text}` : memory.text;
-    choice.append(checkbox, description);
-    choices.append(choice);
-
     const item = document.createElement("article");
     item.className = "memory-item";
-    if (memory.project) {
+    const category = globalThis.MEMORY_POLICY.categories.find((entry) => entry.id === memory.category);
+    if (memory.origin === "automatic") {
       const tag = document.createElement("span");
-      tag.className = "project";
-      tag.textContent = memory.project;
+      tag.className = "memory-tag";
+      tag.textContent = category ? category.label : "Auto saved";
       item.append(tag);
     }
     const body = document.createElement("p");
     body.textContent = memory.text;
+    if (category) {
+      const why = document.createElement("p");
+      why.className = "suggestion-source";
+      why.textContent = `Why saved: ${category.why}`;
+      item.append(body, why);
+    } else item.append(body);
+    if (memory.sourceQuote) {
+      const source = document.createElement("p");
+      source.className = "suggestion-source";
+      source.textContent = `From ${memory.sourceTitle || "conversation"}: “${memory.sourceQuote}”`;
+      item.append(source);
+    }
+    if (memory.scope !== "global" || memory.project ||
+        (memory.origin === "automatic" && !category)) {
+      const note = document.createElement("p");
+      note.className = "suggestion-source";
+      note.textContent = "Older excluded entry. Edit and save it as core memory if it fits the current template, or delete it.";
+      item.append(note);
+    }
     const actions = document.createElement("div");
     actions.className = "memory-actions";
     const edit = document.createElement("button");
@@ -147,16 +183,129 @@ function renderMemories() {
     remove.textContent = "Delete";
     remove.addEventListener("click", () => deleteMemory(memory.id));
     actions.append(edit, remove);
-    item.append(body, actions);
+    item.append(actions);
     list.append(item);
   }
+}
+
+function renderAutoSettings() {
+  $("auto-memory-enabled").checked = !!state.autoMemorySettings.enabled;
+  $("key-state").textContent = state.autoMemorySettings.apiKey ? "API key saved in this Chrome profile." : "No key saved.";
+  $("auto-memory-error").textContent = state.autoMemoryLastError ? `Last scan failed: ${state.autoMemoryLastError}` : "";
+  $("auto-memory-error").classList.toggle("hidden", !state.autoMemoryLastError);
+}
+
+function renderSuggestions() {
+  const list = $("suggestion-list");
+  list.replaceChildren();
+  $("suggestion-count").textContent = String(state.memorySuggestions.length);
+  $("legacy-suggestions-card").classList.toggle("hidden", !state.memorySuggestions.length);
+  if (!state.memorySuggestions.length) {
+    return;
+  }
+  for (const suggestion of state.memorySuggestions) {
+    const item = document.createElement("article");
+    item.className = "memory-item";
+    const text = document.createElement("textarea");
+    text.value = suggestion.text;
+    text.rows = 2;
+    text.setAttribute("aria-label", "Edit suggested memory");
+    const source = document.createElement("p");
+    source.className = "suggestion-source";
+    source.textContent = `From ${suggestion.sourceTitle || "conversation"}: “${suggestion.quote}”`;
+    const actions = document.createElement("div");
+    actions.className = "memory-actions";
+    const accept = document.createElement("button");
+    accept.textContent = "Save memory";
+    accept.addEventListener("click", () => acceptSuggestion(suggestion, text.value));
+    const dismiss = document.createElement("button");
+    dismiss.className = "delete";
+    dismiss.textContent = "Dismiss";
+    dismiss.addEventListener("click", () => dismissSuggestion(suggestion.id));
+    actions.append(accept, dismiss);
+    item.append(text, source, actions);
+    list.append(item);
+  }
+}
+
+async function acceptSuggestion(suggestion, editedText) {
+  const text = editedText.trim().slice(0, 4000);
+  if (!text) return status("Write a memory before saving it.", true);
+  try {
+    const { memories = [], memorySuggestions = [] } = await chrome.storage.local.get(["memories", "memorySuggestions"]);
+    let memory = memories.find((item) => item.text.toLowerCase() === text.toLowerCase());
+    if (!memory) {
+      memory = { id: crypto.randomUUID(), text, scope: "global", origin: "manual", sourceUrl: suggestion.sourceUrl,
+        createdAt: new Date().toISOString() };
+      memories.unshift(memory);
+    } else if (memory.scope !== "global" || memory.project ||
+        (memory.origin === "automatic" && !globalThis.MEMORY_POLICY.categories.some((entry) => entry.id === memory.category))) {
+      memory.scope = "global";
+      memory.origin = "manual";
+      delete memory.project;
+      delete memory.category;
+      memory.updatedAt = new Date().toISOString();
+    }
+    const remaining = memorySuggestions.filter((item) => item.id !== suggestion.id);
+    await chrome.storage.local.set({ memories, memorySuggestions: remaining });
+    state.memories = memories;
+    state.memorySuggestions = remaining;
+    renderMemories();
+    renderSuggestions();
+    refreshPrompt();
+    status("Suggestion saved as memory.");
+  } catch (error) { status(`Could not save suggestion: ${error.message}`, true); }
+}
+
+async function dismissSuggestion(id) {
+  const { memorySuggestions = [] } = await chrome.storage.local.get("memorySuggestions");
+  const remaining = memorySuggestions.filter((item) => item.id !== id);
+  await chrome.storage.local.set({ memorySuggestions: remaining });
+  state.memorySuggestions = remaining;
+  renderSuggestions();
+  status("Suggestion dismissed.");
+}
+
+async function rescanActiveTab() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) await chrome.tabs.sendMessage(tab.id, { type: "RESCAN_AUTO_MEMORY" });
+  } catch { /* A supported tab may not be open. */ }
+}
+
+async function saveAutoSettings() {
+  const apiKey = $("auto-memory-key").value.trim() || state.autoMemorySettings.apiKey;
+  const enabled = $("auto-memory-enabled").checked;
+  if (enabled && !apiKey) return status("Enter an OpenAI API key before enabling automatic memory.", true);
+  try {
+    const autoMemorySettings = { enabled, apiKey };
+    await chrome.storage.local.set({ autoMemorySettings, autoMemoryLastError: "" });
+    state.autoMemorySettings = autoMemorySettings;
+    state.autoMemoryLastError = "";
+    $("auto-memory-key").value = "";
+    renderAutoSettings();
+    if (enabled) await rescanActiveTab();
+    status(enabled ? "Automatic memory enabled." : "Automatic memory disabled.");
+  } catch (error) { status(`Could not save settings: ${error.message}`, true); }
+}
+
+async function removeAutoKey() {
+  const autoMemorySettings = { enabled: false, apiKey: "" };
+  await chrome.storage.local.set({ autoMemorySettings, autoMemoryLastError: "" });
+  state.autoMemorySettings = autoMemorySettings;
+  state.autoMemoryLastError = "";
+  $("auto-memory-key").value = "";
+  renderAutoSettings();
+  status("API key removed and automatic memory disabled.");
 }
 
 function editMemory(memory) {
   state.editingMemoryId = memory.id;
   $("memory-text").value = memory.text;
-  $("memory-project").value = memory.project || "";
-  $("save-memory-btn").textContent = "Save changes";
+  const retired = memory.origin === "automatic" &&
+    !globalThis.MEMORY_POLICY.categories.some((entry) => entry.id === memory.category);
+  $("save-memory-btn").textContent = memory.scope === "global" && !memory.project && !retired
+    ? "Save changes" : "Save as core memory";
   $("cancel-edit-btn").classList.remove("hidden");
   $("memory-text").focus();
 }
@@ -164,23 +313,28 @@ function editMemory(memory) {
 function clearMemoryForm() {
   state.editingMemoryId = "";
   $("memory-text").value = "";
-  $("memory-project").value = "";
   $("save-memory-btn").textContent = "Save memory";
   $("cancel-edit-btn").classList.add("hidden");
 }
 
 async function saveMemory() {
   const text = $("memory-text").value.trim().slice(0, 4000);
-  const project = $("memory-project").value.trim().slice(0, 80);
   if (!text) return status("Write a memory first.", true);
   const { memories = [] } = await chrome.storage.local.get("memories");
   const old = memories.find((memory) => memory.id === state.editingMemoryId);
   if (old) {
     old.text = text;
-    old.project = project;
+    if (old.scope !== "global" || old.project ||
+        (old.origin === "automatic" && !globalThis.MEMORY_POLICY.categories.some((entry) => entry.id === old.category))) {
+      delete old.category;
+      old.origin = "manual";
+    }
+    delete old.project;
+    old.scope = "global";
     old.updatedAt = new Date().toISOString();
   } else {
-    memories.unshift({ id: crypto.randomUUID(), text, project, sourceUrl: "", createdAt: new Date().toISOString() });
+    memories.unshift({ id: crypto.randomUUID(), text, scope: "global", origin: "manual",
+      sourceUrl: "", createdAt: new Date().toISOString() });
   }
   await chrome.storage.local.set({ memories });
   state.memories = memories;
@@ -190,44 +344,13 @@ async function saveMemory() {
   status(old ? "Memory updated." : "Memory saved locally.");
 }
 
-async function saveQuickMemory() {
-  const text = $("quick-memory-text").value.trim().slice(0, 4000);
-  if (!text) return status("Type a memory or use selected conversation text first.", true);
-  try {
-    const { memories = [] } = await chrome.storage.local.get("memories");
-    let memory = memories.find((item) => item.text.toLowerCase() === text.toLowerCase());
-    if (!memory) {
-      memory = {
-        id: crypto.randomUUID(), text, project: "",
-        sourceUrl: state.draftUrl,
-        createdAt: new Date().toISOString()
-      };
-      memories.unshift(memory);
-      await chrome.storage.local.set({ memories });
-    }
-    state.memories = memories;
-    state.selectedMemoryIds.add(memory.id);
-    $("quick-memory-text").value = "";
-    renderMemories();
-    refreshPrompt();
-    status("Memory saved and added to this handoff.");
-  } catch (error) {
-    status(`Could not save memory: ${error.message}`, true);
-  }
-}
-
-function useSelectedConversationText() {
-  const editor = $("transcript");
-  const selection = editor.value.slice(editor.selectionStart, editor.selectionEnd).trim();
-  if (!selection) return status("Select a fact in the conversation text first.", true);
-  $("quick-memory-text").value = selection.slice(0, 4000);
-  $("quick-memory-text").focus();
-}
-
 async function deleteMemory(id) {
   const { memories = [] } = await chrome.storage.local.get("memories");
-  await chrome.storage.local.set({ memories: memories.filter((memory) => memory.id !== id) });
-  state.selectedMemoryIds.delete(id);
+  const remaining = memories.filter((memory) => memory.id !== id);
+  await chrome.storage.local.set({ memories: remaining });
+  state.memories = remaining;
+  renderMemories();
+  refreshPrompt();
   if (state.editingMemoryId === id) clearMemoryForm();
   status("Memory deleted.");
 }
@@ -390,20 +513,33 @@ async function init() {
   } catch (error) {
     status(`Handoff template could not load: ${error.message}`, true);
   }
-  const { chats = [], memories = [] } = await chrome.storage.local.get(["chats", "memories"]);
+  const { chats = [], memories = [], memorySuggestions = [], autoMemorySettings = {}, autoMemoryLastError = "", panelView = "handoff" } =
+    await chrome.storage.local.get(["chats", "memories", "memorySuggestions", "autoMemorySettings", "autoMemoryLastError", "panelView"]);
   state.chats = chats;
   state.memories = memories;
+  state.memorySuggestions = memorySuggestions;
+  state.autoMemorySettings = autoMemorySettings;
+  state.autoMemoryLastError = autoMemoryLastError;
   renderChats();
+  renderMemoryPolicy();
   renderMemories();
-  for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click", () => switchView(tab.dataset.view));
-  $("manage-memory-btn").addEventListener("click", () => switchView("memory"));
+  renderSuggestions();
+  renderAutoSettings();
+  refreshPrompt();
+  switchView(panelView === "memory" ? "memory" : "handoff");
+  syncChatTheme();
+  chrome.tabs.onActivated.addListener(syncChatTheme);
+  for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click", () => {
+    switchView(tab.dataset.view);
+    chrome.storage.local.set({ panelView: tab.dataset.view });
+  });
   $("capture-btn").addEventListener("click", captureCurrentTab);
   $("save-chat-btn").addEventListener("click", saveChat);
   $("delete-chat-btn").addEventListener("click", deleteChat);
   $("chat-select").addEventListener("change", (event) => selectChat(event.target.value));
   $("save-memory-btn").addEventListener("click", saveMemory);
-  $("save-quick-memory-btn").addEventListener("click", saveQuickMemory);
-  $("use-selection-btn").addEventListener("click", useSelectedConversationText);
+  $("save-auto-settings-btn").addEventListener("click", saveAutoSettings);
+  $("remove-auto-key-btn").addEventListener("click", removeAutoKey);
   $("cancel-edit-btn").addEventListener("click", clearMemoryForm);
   $("copy-btn").addEventListener("click", copyPrompt);
   $("continue-btn").addEventListener("click", openAndFill);
@@ -411,11 +547,24 @@ async function init() {
   for (const id of ["transcript", "chat-title"]) $(id).addEventListener("input", () => setSaveState("Unsaved conversation changes.", true));
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
+    if (changes.panelView) switchView(changes.panelView.newValue === "memory" ? "memory" : "handoff");
     if (changes.chats) { state.chats = changes.chats.newValue || []; renderChats(); }
     if (changes.memories) {
       state.memories = changes.memories.newValue || [];
       renderMemories();
       refreshPrompt();
+    }
+    if (changes.memorySuggestions) {
+      state.memorySuggestions = changes.memorySuggestions.newValue || [];
+      renderSuggestions();
+    }
+    if (changes.autoMemorySettings) {
+      state.autoMemorySettings = changes.autoMemorySettings.newValue || {};
+      renderAutoSettings();
+    }
+    if (changes.autoMemoryLastError) {
+      state.autoMemoryLastError = changes.autoMemoryLastError.newValue || "";
+      renderAutoSettings();
     }
   });
 }

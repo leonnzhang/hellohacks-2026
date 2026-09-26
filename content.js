@@ -10,7 +10,7 @@
 
   function cleanText(node) {
     const clone = node.cloneNode(true);
-    clone.querySelectorAll("button, svg, script, style, [aria-hidden='true']").forEach((item) => item.remove());
+    clone.querySelectorAll("button, svg, script, style, [aria-hidden='true'], #relay-transfer-root").forEach((item) => item.remove());
     clone.querySelectorAll("br").forEach((item) => item.replaceWith("\n"));
     clone.querySelectorAll("p, li, pre, blockquote, h1, h2, h3, h4").forEach((item) => item.append("\n"));
     return (clone.textContent || "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -151,8 +151,253 @@
       : { ok: false, reason: "Text mismatch" };
   }
 
+  function chatTheme() {
+    const composer = findComposer();
+    const style = getComputedStyle(composer || document.body);
+    const opaque = (color) => color && !/^(transparent|rgba?\(0,\s*0,\s*0,\s*0\))$/.test(color);
+    let surface = "";
+    for (let node = composer; node; node = node.parentElement) {
+      const color = getComputedStyle(node).backgroundColor;
+      if (opaque(color)) {
+        surface = color;
+        break;
+      }
+    }
+    surface ||= getComputedStyle(document.body).backgroundColor;
+    if (!opaque(surface)) surface = "rgb(255, 255, 255)";
+    const pageBackground = [document.body, document.documentElement]
+      .map((node) => getComputedStyle(node).backgroundColor).find(opaque) || surface;
+    const rgb = surface.match(/\d+(?:\.\d+)?/g)?.slice(0, 3).map(Number) || [255, 255, 255];
+    const dark = (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722) < 130;
+    const radius = Math.min(20, Math.max(12, parseFloat(getComputedStyle(composer?.parentElement || document.body).borderRadius) || 14));
+    const accent = service === "Claude" ? (dark ? "#e6a681" : "#a04f2d")
+      : service === "Gemini" ? (dark ? "#9bbcff" : "#315fbe")
+        : (dark ? "#dce3eb" : "#26313d");
+    return {
+      service, dark, surface, background: pageBackground, radius: `${radius}px`,
+      text: style.color || (dark ? "#f6f7f8" : "#202124"),
+      muted: dark ? "#adb5bd" : "#626b75",
+      border: dark ? "#555b62" : "#d8dde3",
+      accent,
+      fontFamily: style.fontFamily || "system-ui, sans-serif"
+    };
+  }
+
+  let transferHost;
+  let transferPanel;
+  let transferButton;
+  let mountQueued = false;
+  function composerAnchor(composer) {
+    let anchor = composer;
+    for (let parent = composer.parentElement, depth = 0; parent && depth < 5; parent = parent.parentElement, depth++) {
+      const rect = parent.getBoundingClientRect();
+      if (rect.height > 240 || rect.width > innerWidth * 1.1) break;
+      if (rect.width >= 250 && rect.height >= 44) anchor = parent;
+    }
+    return anchor;
+  }
+
+  function mountTransferControl() {
+    mountQueued = false;
+    const composer = findComposer();
+    if (!composer) {
+      if (transferHost) transferHost.hidden = true;
+      return;
+    }
+    if (!transferHost) {
+      transferHost = document.createElement("div");
+      transferHost.id = "relay-transfer-root";
+      transferHost.style.cssText = "position:fixed;z-index:2147483646;pointer-events:auto;";
+      const shadow = transferHost.attachShadow({ mode: "open" });
+      shadow.innerHTML = `<style>
+        :host{all:initial;color:var(--rt-text);font-family:var(--rt-font);font-size:13px}
+        *{box-sizing:border-box}button{font:inherit;cursor:pointer}button:disabled{cursor:wait;opacity:.55}button:focus-visible{outline:2px solid var(--rt-accent);outline-offset:2px}
+        .launcher{display:inline-flex;align-items:center;gap:8px;min-height:37px;padding:5px 10px 5px 5px;border:1px solid var(--rt-border);border-radius:999px;background:var(--rt-surface);color:var(--rt-text);box-shadow:0 3px 12px #0000001f;white-space:nowrap;transition:box-shadow .15s,transform .15s}
+        .launcher:hover{box-shadow:0 6px 18px #00000026;transform:translateY(-1px)}
+        .mark{display:grid;place-items:center;width:26px;height:26px;flex:none;border-radius:50%;background:var(--rt-accent);color:var(--rt-accent-text);font-size:15px;line-height:1}
+        .label{font-size:12px;font-weight:700;letter-spacing:-.01em}.chevron{margin-left:1px;color:var(--rt-muted);font-size:13px}
+        .menu{position:absolute;right:0;bottom:calc(100% + 9px);width:min(322px,calc(100vw - 20px));max-height:min(440px,calc(100vh - 24px));overflow:auto;padding:14px;border:1px solid var(--rt-border);border-radius:max(16px,var(--rt-radius));background:var(--rt-surface);color:var(--rt-text);box-shadow:0 16px 42px #0000002e}
+        .menu.below{top:calc(100% + 9px);bottom:auto}.menu[hidden],.copy[hidden]{display:none}
+        .eyebrow{margin:0 0 3px;color:var(--rt-muted);font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+        .head{padding:2px 2px 11px}.head strong{display:block;font-size:15px;letter-spacing:-.02em}.head small{display:block;margin-top:4px;color:var(--rt-muted);font-size:11px;line-height:1.35}
+        .destinations{display:grid;gap:4px;padding:8px 0;border-top:1px solid var(--rt-border)}
+        .destination{display:flex;align-items:center;gap:11px;width:100%;padding:10px 9px;border:0;border-radius:11px;background:transparent;color:var(--rt-text);text-align:left;transition:background .15s}
+        .destination:hover,.destination:focus-visible{background:color-mix(in srgb,var(--rt-accent) 10%,var(--rt-surface))}
+        .destination-copy{min-width:0;flex:1}.destination strong{display:block;font-size:12px}.destination small{display:block;margin-top:3px;color:var(--rt-muted);font-size:10px;line-height:1.3}
+        .avatar{display:grid;place-items:center;width:30px;height:30px;flex:none;border-radius:10px;font-size:12px;font-weight:750}
+        .service-chatgpt{background:#dcefe7;color:#136449}.service-claude{background:#f5e2d7;color:#9c4a2d}.service-gemini{background:#e5ebff;color:#315fbe}
+        .arrow{color:var(--rt-muted);font-size:16px}.foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 2px 1px;border-top:1px solid var(--rt-border);color:var(--rt-muted);font-size:10px}
+        .foot button,.copy{padding:0;border:0;background:none;color:var(--rt-accent);font-size:11px;font-weight:700;white-space:nowrap}.foot button:hover,.copy:hover{text-decoration:underline}
+        .status{margin:9px 2px 0;color:var(--rt-muted);font-size:11px;line-height:1.45}.status:empty{display:none}.copy{margin:8px 2px 0}
+      </style>
+      <button type="button" class="launcher" aria-haspopup="dialog" aria-expanded="false" aria-label="Transfer this chat"><span class="mark" aria-hidden="true">⇄</span><span class="label">Transfer</span><span class="chevron" aria-hidden="true">⌄</span></button>
+      <section class="menu" role="dialog" aria-label="Transfer chat" hidden><div class="head"><p class="eyebrow">Chat transfer</p><strong>Continue this conversation</strong><small>Open a new editable draft with your chat and core memory.</small></div><div class="destinations"></div><div class="foot"><span class="context-count">Checking context…</span><button type="button" class="memory-center">Memory Center →</button></div><p class="status" role="status" aria-live="polite"></p><button type="button" class="copy" hidden>Copy prepared prompt</button></section>`;
+      transferButton = shadow.querySelector(".launcher");
+      transferPanel = shadow.querySelector(".menu");
+      const list = shadow.querySelector(".destinations");
+      for (const destination of ["ChatGPT", "Claude", "Gemini"]) {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "destination";
+        const avatar = document.createElement("span");
+        avatar.className = `avatar service-${destination.toLowerCase()}`;
+        avatar.textContent = destination[0];
+        const copy = document.createElement("span");
+        copy.className = "destination-copy";
+        const name = document.createElement("strong");
+        name.textContent = destination;
+        const description = document.createElement("small");
+        description.textContent = destination === service ? "Start a fresh chat here" : "Open an editable draft";
+        copy.append(name, description);
+        const arrow = document.createElement("span");
+        arrow.className = "arrow";
+        arrow.setAttribute("aria-hidden", "true");
+        arrow.textContent = "→";
+        row.append(avatar, copy, arrow);
+        row.addEventListener("click", () => startInlineTransfer(destination));
+        list.append(row);
+      }
+      transferButton.addEventListener("click", async () => {
+        transferPanel.hidden = !transferPanel.hidden;
+        transferButton.setAttribute("aria-expanded", String(!transferPanel.hidden));
+        if (!transferPanel.hidden) {
+          shadow.querySelector(".status").textContent = "";
+          shadow.querySelector(".copy").hidden = true;
+          const result = capture();
+          const messageCount = result.messages.filter((item) => ["user", "assistant"].includes(item.role)).length;
+          try {
+            const { count = 0 } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
+            shadow.querySelector(".context-count").textContent = `${messageCount} messages · ${count} ${count === 1 ? "memory" : "memories"}`;
+          } catch { shadow.querySelector(".context-count").textContent = `${messageCount} messages`; }
+        }
+      });
+      shadow.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || transferPanel.hidden) return;
+        transferPanel.hidden = true;
+        transferButton.setAttribute("aria-expanded", "false");
+        transferButton.focus();
+      });
+      document.addEventListener("pointerdown", (event) => {
+        if (!transferPanel.hidden && !event.composedPath().includes(transferHost)) {
+          transferPanel.hidden = true;
+          transferButton.setAttribute("aria-expanded", "false");
+        }
+      });
+      shadow.querySelector(".memory-center").addEventListener("click", async () => {
+        try {
+          const reply = await chrome.runtime.sendMessage({ type: "OPEN_MEMORY_CENTER" });
+          if (!reply?.ok) throw new Error(reply?.message || "Could not open Memory Center.");
+          transferPanel.hidden = true;
+          transferButton.setAttribute("aria-expanded", "false");
+        } catch (error) { shadow.querySelector(".status").textContent = error.message; }
+      });
+      shadow.querySelector(".copy").addEventListener("click", async (event) => {
+        try {
+          await navigator.clipboard.writeText(event.currentTarget.dataset.prompt || "");
+          shadow.querySelector(".status").textContent = "Prompt copied. Paste it into the destination composer.";
+        } catch { shadow.querySelector(".status").textContent = "Copy failed. Open the side panel to copy the prompt."; }
+      });
+      document.body.append(transferHost);
+    }
+    transferHost.hidden = false;
+    const theme = chatTheme();
+    for (const [name, value] of Object.entries({
+      "--rt-surface": theme.surface, "--rt-text": theme.text, "--rt-muted": theme.muted,
+      "--rt-border": theme.border, "--rt-accent": theme.accent, "--rt-font": theme.fontFamily,
+      "--rt-radius": theme.radius, "--rt-accent-text": theme.dark ? "#17202a" : "#ffffff"
+    })) transferHost.style.setProperty(name, value);
+    const rect = composerAnchor(composer).getBoundingClientRect();
+    if (rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) {
+      transferHost.hidden = true;
+      return;
+    }
+    const top = rect.top >= 46 ? rect.top - 45 : rect.bottom + 8;
+    const buttonTop = Math.max(8, Math.min(innerHeight - 45, Math.round(top)));
+    transferHost.style.top = `${buttonTop}px`;
+    transferHost.style.right = `${Math.max(8, Math.round(innerWidth - rect.right + 8))}px`;
+    const spaceAbove = buttonTop - 14;
+    const spaceBelow = innerHeight - buttonTop - 55;
+    const below = spaceBelow > spaceAbove;
+    transferPanel.classList.toggle("below", below);
+    transferPanel.style.maxHeight = `${Math.max(120, (below ? spaceBelow : spaceAbove) - 8)}px`;
+  }
+
+  function scheduleTransferControl() {
+    if (mountQueued) return;
+    mountQueued = true;
+    requestAnimationFrame(mountTransferControl);
+  }
+
+  async function startInlineTransfer(destination) {
+    const shadow = transferHost.shadowRoot;
+    const status = shadow.querySelector(".status");
+    const copy = shadow.querySelector(".copy");
+    const rows = shadow.querySelectorAll(".destination");
+    const result = capture();
+    if (result.captureMethod === "page text" || !result.messages.some((item) => item.role === "user")) {
+      status.textContent = "Could not read this chat. Use the side panel to review a capture.";
+      return;
+    }
+    rows.forEach((row) => { row.disabled = true; });
+    copy.hidden = true;
+    status.textContent = `Opening ${destination}…`;
+    try {
+      const reply = await chrome.runtime.sendMessage({ type: "INLINE_TRANSFER", destination, capture: result });
+      status.textContent = reply?.ok ? `Draft ready in ${destination}. Review it before sending.` :
+        (reply?.message || "Transfer failed.");
+      if (reply?.prompt) {
+        copy.dataset.prompt = reply.prompt;
+        copy.hidden = false;
+      }
+    } catch (error) { status.textContent = error.message || "Transfer failed."; }
+    finally { rows.forEach((row) => { row.disabled = false; }); }
+  }
+
+  let autoTimer;
+  let lastAutoSignature = "";
+  let autoSending = false;
+  async function sendAutoCapture() {
+    if (autoSending) return;
+    autoSending = true;
+    try {
+      const status = await chrome.runtime.sendMessage({ type: "AUTO_MEMORY_STATUS" });
+      if (!status?.enabled) return;
+      const result = capture();
+      if (result.captureMethod === "page text" || !result.messages.some((item) => item.role === "user") ||
+          !result.messages.some((item) => item.role === "assistant")) return;
+      const signature = result.url + JSON.stringify(result.messages);
+      if (signature === lastAutoSignature) return;
+      const reply = await chrome.runtime.sendMessage({ type: "AUTO_MEMORY_CAPTURE", capture: result });
+      if (["processed", "unchanged", "error"].includes(reply?.status)) lastAutoSignature = signature;
+      if (reply?.status === "busy") scheduleAutoCapture(15000);
+    } catch { /* Extension may have been reloaded while this tab was open. */ }
+    finally { autoSending = false; }
+  }
+
+  function scheduleAutoCapture(delay = 15000) {
+    clearTimeout(autoTimer);
+    autoTimer = setTimeout(() => { autoTimer = null; sendAutoCapture(); }, delay);
+  }
+
+  if (document.body) {
+    new MutationObserver(() => { scheduleAutoCapture(); scheduleTransferControl(); }).observe(document.body, {
+      subtree: true, childList: true, characterData: true
+    });
+    scheduleAutoCapture();
+    scheduleTransferControl();
+    addEventListener("scroll", scheduleTransferControl, true);
+    addEventListener("resize", scheduleTransferControl);
+    setInterval(() => { if (!autoTimer) scheduleAutoCapture(); scheduleTransferControl(); }, 30000);
+  }
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "CAPTURE") sendResponse(capture());
+    if (message.type === "GET_CHAT_THEME") sendResponse(chatTheme());
+    if (message.type === "RESCAN_AUTO_MEMORY") {
+      lastAutoSignature = "";
+      scheduleAutoCapture(500);
+      sendResponse({ ok: true });
+    }
     if (message.type === "INSERT_PROMPT") {
       insertPrompt(message.text).then(sendResponse).catch((error) => sendResponse({ ok: false, reason: error.message }));
       return true;

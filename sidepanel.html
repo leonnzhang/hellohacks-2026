@@ -9,12 +9,12 @@
 <body>
   <header class="topbar">
     <div class="brand"><span class="brand-mark">↗</span><div><strong>Relay Memory</strong><small>Your context, wherever you chat</small></div></div>
-    <span class="local-pill">Local only</span>
+    <span class="local-pill">Local by default</span>
   </header>
 
   <nav class="tabs" aria-label="Sections">
     <button class="tab active" data-view="handoff">Handoff</button>
-    <button class="tab" data-view="memory">Memory</button>
+    <button class="tab" data-view="memory">Memory Center</button>
   </nav>
 
   <main>
@@ -32,16 +32,7 @@
       </section>
 
       <section class="card">
-        <div class="section-heading"><div><span class="step">2</span><h2>Add relevant memory</h2></div><button id="manage-memory-btn" class="text-button">Manage</button></div>
-        <p class="muted">Save a lasting fact, then choose which memories to include. Saving a conversation does not automatically turn its whole transcript into memory.</p>
-        <label for="quick-memory-text">New memory</label>
-        <textarea id="quick-memory-text" rows="3" placeholder="Type a fact to remember, or select text in the conversation above."></textarea>
-        <div class="action-row"><button id="use-selection-btn" class="button subtle">Use selected text</button><button id="save-quick-memory-btn" class="button primary">Save memory</button></div>
-        <div id="memory-choices" class="choice-list"></div>
-      </section>
-
-      <section class="card">
-        <div class="section-heading"><div><span class="step">3</span><h2>Continue elsewhere</h2></div></div>
+        <div class="section-heading"><div><span class="step">2</span><h2>Continue elsewhere</h2></div></div>
         <label for="destination">Destination</label>
         <select id="destination">
           <option value="ChatGPT">ChatGPT</option>
@@ -50,6 +41,7 @@
         </select>
         <label for="next-request">What do you want to ask next?</label>
         <textarea id="next-request" rows="3" placeholder="Optional: add your next question here"></textarea>
+        <p id="auto-memory-summary" class="fineprint">Core memories are included automatically.</p>
         <label for="prompt-preview">Context prompt <span class="hint">editable before transfer</span></label>
         <textarea id="prompt-preview" rows="10" placeholder="Your handoff prompt will appear here."></textarea>
         <div class="action-row"><button id="copy-btn" class="button subtle">Copy prompt</button><button id="continue-btn" class="button primary">Open &amp; fill</button></div>
@@ -59,12 +51,32 @@
 
     <section id="memory-view" class="view hidden">
       <section class="card">
-        <div class="section-heading"><div><span class="step star">✦</span><h2>Shared memory</h2></div></div>
-        <p class="muted">Save preferences, project facts, and decisions to reuse across chats.</p>
+        <div class="section-heading"><div><span class="step star">✦</span><h2>Automatic memory</h2></div></div>
+        <p class="muted">When enabled, newly visited ChatGPT, Claude, and Gemini chats are sent to OpenAI after they settle. The model uses the template below; the extension checks each category and source quote before saving. This includes enduring allergies or accessibility needs you state. Saved memories may appear in handoffs; you can edit or delete them.</p>
+        <label class="toggle-label"><input id="auto-memory-enabled" type="checkbox"> Save memories from chats I visit</label>
+        <label for="auto-memory-key">OpenAI API key</label>
+        <input id="auto-memory-key" type="password" autocomplete="off" placeholder="Enter a key to enable automatic memory">
+        <p id="key-state" class="fineprint">No key saved.</p>
+        <p id="auto-memory-error" class="save-state unsaved hidden" role="status"></p>
+        <div class="action-row"><button id="save-auto-settings-btn" class="button primary">Save settings</button><button id="remove-auto-key-btn" class="button subtle">Remove key</button></div>
+        <p class="fineprint">The key stays in this Chrome profile. Conversation text leaves your device only while this setting is enabled. API charges may apply.</p>
+      </section>
+      <section class="card">
+        <div class="section-heading"><div><h2>Core memory template</h2></div></div>
+        <div id="memory-policy-list" class="policy-list"></div>
+        <p class="fineprint">Each auto-saved fact needs a quote from your message. We skip:</p>
+        <ul id="memory-policy-skip" class="policy-skip"></ul>
+      </section>
+      <section id="legacy-suggestions-card" class="card hidden">
+        <div class="section-heading"><div><h2>Earlier suggestions</h2></div><span id="suggestion-count" class="count">0</span></div>
+        <p class="muted">These were created before automatic saving was enabled. Review or dismiss them.</p>
+        <div id="suggestion-list" class="memory-list"></div>
+      </section>
+      <section class="card">
+        <div class="section-heading"><div><span class="step star">✦</span><h2>Manual core memory</h2></div></div>
+        <p class="muted">Add or correct a fact that should help across chats.</p>
         <label for="memory-text">Memory</label>
-        <textarea id="memory-text" rows="4" placeholder="Example: Our hackathon project is a Chrome extension and all data stays in chrome.storage.local."></textarea>
-        <label for="memory-project">Project tag <span class="hint">optional</span></label>
-        <input id="memory-project" type="text" placeholder="e.g. Relay Memory">
+        <textarea id="memory-text" rows="4" placeholder="Example: I prefer concise answers."></textarea>
         <div class="action-row"><button id="cancel-edit-btn" class="button subtle hidden">Cancel</button><button id="save-memory-btn" class="button primary">Save memory</button></div>
       </section>
       <section class="card">
@@ -75,6 +87,8 @@
   </main>
 
   <div id="status" class="status" role="status" aria-live="polite"></div>
+  <script src="memory-policy.js"></script>
+  <script src="transfer-core.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
