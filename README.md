@@ -2,6 +2,11 @@
 
 A Chrome extension for two connected actions: carry a chat into another AI service, and reuse saved memories across chats. All saved data stays in `chrome.storage.local`. There is no backend, account, remote database, or model API call.
 
+## Project docs
+
+- [Product brief](docs/PRODUCT_BRIEF.md): objectives, user journeys, scope, and demo success criteria.
+- [Developer handoff](docs/DEVELOPER_HANDOFF.md): architecture, data flow, verification status, and next steps.
+
 ## Install locally
 
 1. Open `chrome://extensions` in Chrome.
