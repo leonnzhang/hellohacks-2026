@@ -5,6 +5,8 @@ globalThis.RELAY_TRANSFER = (() => {
     Gemini: "https://gemini.google.com/app"
   };
   const maxTranscript = 20000;
+  const contextStart = "[Relay transfer context — start]";
+  const contextEnd = "[Relay transfer context — end]";
 
   function isEligibleMemory(memory, policy = globalThis.MEMORY_POLICY) {
     const active = new Set(policy.categories.map((entry) => entry.id));
@@ -17,7 +19,7 @@ globalThis.RELAY_TRANSFER = (() => {
   }
 
   function formatTranscript(messages) {
-    return messages.map(({ role, text }) => `${role.toUpperCase()}:\n${text}`).join("\n\n");
+    return messages.map(({ role, text }) => `${role.toUpperCase()}:\n${role === "user" ? stripAugmentedPrompt(text) : text}`).join("\n\n");
   }
 
   function shortenTranscript(transcript, template) {
@@ -36,5 +38,20 @@ globalThis.RELAY_TRANSFER = (() => {
     return sections.join(template.separator);
   }
 
-  return { destinations, isEligibleMemory, pickMemories, formatTranscript, buildPrompt };
+  function buildAugmentedPrompt(context, userMessage) {
+    const request = userMessage.trim();
+    if (!request) return "";
+    if (!context.trim()) return request;
+    return `${contextStart}\n${context.trim()}\n${contextEnd}\n\nCURRENT REQUEST\n${request}`;
+  }
+
+  function stripAugmentedPrompt(text) {
+    if (!text.startsWith(`${contextStart}\n`)) return text;
+    const marker = `${contextEnd}\n\nCURRENT REQUEST\n`;
+    const index = text.indexOf(marker);
+    return index < 0 ? text : text.slice(index + marker.length);
+  }
+
+  return { destinations, isEligibleMemory, pickMemories, formatTranscript, buildPrompt,
+    buildAugmentedPrompt, stripAugmentedPrompt };
 })();

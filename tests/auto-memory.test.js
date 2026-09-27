@@ -14,6 +14,7 @@ function harness() {
     action: { onClicked: { addListener() {} } },
     runtime: { onInstalled: { addListener() {} }, onMessage: { addListener() {} } },
     contextMenus: { onClicked: { addListener() {} } },
+    tabs: { onRemoved: { addListener() {} } },
     storage: { local: {
       async get(keys) {
         const names = Array.isArray(keys) ? keys : [keys];
@@ -97,4 +98,12 @@ test("new core categories are allowed and retired categories are rejected", () =
   ] };
   assert.deepEqual(Array.from(validate(raw, messages, []), (item) => item.category),
     ["hobbies_interests", "health_context"]);
+});
+
+test("automatic extraction sees only the new request from a transferred message", () => {
+  const { context } = harness();
+  const build = context.RELAY_TRANSFER.buildAugmentedPrompt;
+  const combined = build("SAVED MEMORY\n- I have a peanut allergy.", "What should I cook tonight?");
+  const prepared = vm.runInContext("prepareMessages", context)([{ role: "user", text: combined }]);
+  assert.equal(prepared[0].text, "What should I cook tonight?");
 });

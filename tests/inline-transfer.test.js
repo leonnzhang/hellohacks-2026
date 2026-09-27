@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-test("inline transfer opens an editable draft with only active core memories", async () => {
+test("inline transfer opens a blank chat and arms a reviewed first send", async () => {
   const template = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "prompts", "handoff.json"), "utf8"));
   const stored = { memories: [
     { text: "I have a peanut allergy.", scope: "global", origin: "automatic", category: "health_context" },
@@ -12,7 +12,7 @@ test("inline transfer opens an editable draft with only active core memories", a
     { text: "I am learning Rust this year.", scope: "global", origin: "automatic", category: "ongoing_goal" }
   ] };
   let openedUrl = "";
-  let filledPrompt = "";
+  const session = {};
   const chrome = {
     action: { onClicked: { addListener() {} } },
     runtime: {
@@ -21,14 +21,23 @@ test("inline transfer opens an editable draft with only active core memories", a
       onMessage: { addListener() {} }
     },
     contextMenus: { onClicked: { addListener() {} } },
-    storage: { local: { async get() { return structuredClone(stored); } } },
+    storage: {
+      local: { async get() { return structuredClone(stored); } },
+      session: {
+        async get(key) { return { [key]: session[key] }; },
+        async set(values) { Object.assign(session, structuredClone(values)); },
+        async remove(key) { delete session[key]; }
+      }
+    },
     tabs: {
+      onRemoved: { addListener() {} },
       async create({ url }) { openedUrl = url; return { id: 8 }; },
-      async sendMessage(_id, message) { filledPrompt = message.text; return { ok: true }; }
+      async update() {}
     }
   };
   const context = vm.createContext({
-    chrome, importScripts() {}, URL, setTimeout: (callback) => { callback(); return 1; }, clearTimeout() {},
+    chrome, crypto: { randomUUID: () => "transfer-1" }, importScripts() {}, URL,
+    setTimeout: (callback) => { callback(); return 1; }, clearTimeout() {},
     fetch: async () => ({ ok: true, async json() { return template; } })
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "memory-policy.js"), "utf8"), context);
@@ -47,15 +56,20 @@ test("inline transfer opens an editable draft with only active core memories", a
   assert.equal(result.ok, true);
   assert.equal(result.count, 2);
   assert.equal(openedUrl, "https://claude.ai/new");
-  assert.match(filledPrompt, /I have a peanut allergy/);
-  assert.match(filledPrompt, /I enjoy hiking/);
-  assert.doesNotMatch(filledPrompt, /learning Rust/);
-  assert.match(filledPrompt, /USER:\nHelp me plan the next step/);
-  assert.doesNotMatch(filledPrompt, /MY NEXT REQUEST|Add your next request/);
-  assert.match(filledPrompt, /wait for my next request/i);
+  const armed = session["pendingTransfer:8"];
+  assert.match(armed.prompt, /I have a peanut allergy/);
+  assert.match(armed.prompt, /I enjoy hiking/);
+  assert.doesNotMatch(armed.prompt, /learning Rust/);
+  assert.match(armed.prompt, /USER:\nHelp me plan the next step/);
+  assert.doesNotMatch(armed.prompt, /MY NEXT REQUEST|Add your next request/);
+  const destinationSender = { tab: { id: 8, url: "https://claude.ai/new" } };
+  assert.equal((await vm.runInContext("pendingTransfer", context)(destinationSender)).id, "transfer-1");
+  assert.equal(await vm.runInContext("pendingTransfer", context)({ tab: { id: 8, url: "https://chatgpt.com/" } }), null);
+  assert.equal((await vm.runInContext("completePendingTransfer", context)("transfer-1", destinationSender)).ok, true);
+  assert.equal(await vm.runInContext("pendingTransfer", context)(destinationSender), null);
 
   const sameService = await transfer({ destination: "ChatGPT", capture }, sender);
   assert.equal(sameService.ok, true);
   assert.equal(openedUrl, "https://chatgpt.com/");
-  assert.match(filledPrompt, /USER:\nHelp me plan the next step/);
+  assert.match(session["pendingTransfer:8"].prompt, /USER:\nHelp me plan the next step/);
 });

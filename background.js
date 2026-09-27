@@ -19,7 +19,9 @@ function prepareMessages(messages) {
   if (!Array.isArray(messages)) return [];
   const clean = messages.filter((item) =>
     item && ["user", "assistant"].includes(item.role) && typeof item.text === "string" && item.text.trim()
-  ).map(({ role, text }) => ({ role, text: text.trim().slice(0, 12000) }));
+  ).map(({ role, text }) => ({
+    role, text: (role === "user" ? globalThis.RELAY_TRANSFER.stripAugmentedPrompt(text.trim()) : text.trim()).slice(0, 12000)
+  }));
   let length = 0;
   const recent = [];
   for (const message of clean.reverse()) {
@@ -179,16 +181,38 @@ async function processInlineTransfer(payload, sender) {
     memories: chosen,
     template
   });
-  const tab = await chrome.tabs.create({ url: globalThis.RELAY_TRANSFER.destinations[destination], active: true });
-  for (let attempt = 0; attempt < 16; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, 750));
-    try {
-      const result = await chrome.tabs.sendMessage(tab.id, { type: "INSERT_PROMPT", text: prompt });
-      if (result?.ok) return { ok: true, destination, count: chosen.length };
-      if (result?.reason === "Text mismatch") break;
-    } catch { /* The destination is still loading. */ }
+  const url = globalThis.RELAY_TRANSFER.destinations[destination];
+  const tab = await chrome.tabs.create({ url, active: false });
+  try {
+    await chrome.storage.session.set({ [`pendingTransfer:${tab.id}`]: {
+      id: crypto.randomUUID(), prompt, origin: new URL(url).origin, createdAt: Date.now()
+    } });
+    await chrome.tabs.update(tab.id, { active: true });
+  } catch (error) {
+    await chrome.tabs.remove(tab.id);
+    throw error;
   }
-  return { ok: false, message: `Opened ${destination}, but could not fill its composer. Copy the prepared prompt instead.`, prompt };
+  return { ok: true, destination, count: chosen.length };
+}
+
+async function pendingTransfer(sender) {
+  if (!sender.tab?.id || !supportedChatUrl(sender.tab.url)) return null;
+  const key = `pendingTransfer:${sender.tab.id}`;
+  const entry = (await chrome.storage.session.get(key))[key];
+  if (!entry) return null;
+  if (Date.now() - entry.createdAt > 30 * 60 * 1000) {
+    await chrome.storage.session.remove(key);
+    return null;
+  }
+  if (new URL(sender.tab.url).origin !== entry.origin) return null;
+  return { id: entry.id, prompt: entry.prompt };
+}
+
+async function completePendingTransfer(id, sender) {
+  const entry = await pendingTransfer(sender);
+  if (!entry || entry.id !== id) return { ok: false };
+  await chrome.storage.session.remove(`pendingTransfer:${sender.tab.id}`);
+  return { ok: true };
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -215,7 +239,7 @@ chrome.action.onClicked.addListener(async (tab) => {
     /* Inject below when the tab has no current content script. */
   }
   try {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js", "transfer-core.js", "transfer-review.js"] });
     await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_MEMORY_CENTER" });
   } catch { /* The tab may have navigated or closed. */ }
 });
@@ -236,7 +260,20 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   await chrome.storage.local.set({ memories });
 });
 
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.storage.session.remove(`pendingTransfer:${tabId}`).catch(() => {});
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "GET_PENDING_TRANSFER") {
+    pendingTransfer(sender).then(sendResponse).catch(() => sendResponse(null));
+    return true;
+  }
+  if (message?.type === "COMPLETE_PENDING_TRANSFER") {
+    completePendingTransfer(message.id, sender).then(sendResponse)
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
   if (message?.type === "INLINE_CONTEXT_STATUS") {
     chrome.storage.local.get("memories")
       .then(({ memories = [] }) => sendResponse({ count: globalThis.RELAY_TRANSFER.pickMemories(memories).length }))

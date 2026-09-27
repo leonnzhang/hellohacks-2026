@@ -369,7 +369,7 @@
     status.textContent = `Opening ${destination}…`;
     try {
       const reply = await chrome.runtime.sendMessage({ type: "INLINE_TRANSFER", destination, capture: result });
-      status.textContent = reply?.ok ? `Draft ready in ${destination}. Review it before sending.` :
+      status.textContent = reply?.ok ? `Chat ready in ${destination}. Type your message there; review context when sending.` :
         (reply?.message || "Transfer failed.");
       if (reply?.prompt) {
         copy.dataset.prompt = reply.prompt;

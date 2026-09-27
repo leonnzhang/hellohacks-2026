@@ -12,7 +12,7 @@ You can edit or delete memories in Memory Center and remove the API key there. R
 
 Automatic saving is off by default. If you enable it and supply an OpenAI API key, the extension sends messages currently visible in supported ChatGPT, Claude, and Gemini chats to the OpenAI API to extract lasting facts. The request sets `store: false`. The extension checks suggested facts against allowed categories and quotes from your own messages before saving them. This process may still save an incorrect fact; you can review, edit, or delete it in Memory Center. The allowed categories include a minimal, enduring allergy or accessibility need you explicitly state.
 
-A transfer opens a new chat with an editable draft containing the captured conversation and up to three eligible memories. The extension does not send that draft for you. It reaches the destination chat service when you choose to send it there.
+A transfer opens a new chat and keeps the captured conversation and up to three eligible memories in that tab's extension session storage for up to 30 minutes. When you send your first message, Relay shows the exact combined text and destination. It sends that text only if you choose **Send with context**. You can send your original message without context or cancel. The combined text appears in the destination chat history.
 
 ## Access
 

@@ -12,7 +12,7 @@ function setup(firstMessageFails = false) {
     action: { onClicked: { addListener(callback) { onClick = callback; } } },
     runtime: { onInstalled: { addListener() {} }, onMessage: { addListener() {} } },
     contextMenus: { onClicked: { addListener() {} } },
-    tabs: { async sendMessage(id, message) {
+    tabs: { onRemoved: { addListener() {} }, async sendMessage(id, message) {
       if (firstMessageFails && !injected) throw new Error("No content script");
       messages.push({ id, message });
       return { ok: true };

@@ -21,7 +21,7 @@ A Chrome extension for two connected actions: carry a chat into another AI servi
 ## Demo
 
 1. Open a ChatGPT, Claude, or Gemini conversation and click **Transfer** beside the composer.
-2. Choose a destination. The extension opens a new chat with an editable context draft, including up to three core memories. Review and send it, then write your next message.
+2. Choose a destination. The extension opens a blank chat. Write your next message there; when you send it, Relay shows the exact message with the previous conversation and up to three core memories added. Choose **Send with context** to send it, **Send without context** to send your original message, or **Cancel**.
 3. Open **Memory Center** from the Transfer menu or extension icon. Use the left sidebar to see an overview, manage saved memories, review memory rules, and read Privacy & data. You can also save selected text with the page's right-click menu.
 4. To enable automatic memory, open **Privacy & data**, enter your own OpenAI API key, and turn on automatic saving. Core facts grounded in your messages are saved as supported chats settle.
 
@@ -33,6 +33,7 @@ The **Memory Center** link and toolbar icon open the same centered overlay on su
 - Capture can inject its reader into a chat tab that was open before you loaded the extension. If site-specific message selectors fail, it saves visible text from the page's main area for you to review.
 - Site layouts change. Capture and composer selectors live in `content.js` and can be updated independently of the saved data.
 - The handoff prompt includes up to 20,000 characters of transcript, retaining the beginning and end when a chat is longer. The full edited transcript remains saved locally.
+- Pending transfer context is kept for one tab in `chrome.storage.session` for up to 30 minutes and is removed after the reviewed send or when the tab closes. The combined message appears in the destination chat history.
 - The reusable handoff wording lives in `prompts/handoff.json`. It is sent as a user prompt; this extension has no model system prompt. Technique templates are not part of the current codebase.
 - `chrome.storage.local` belongs to the current Chrome profile; it does not sync saved context to other devices.
 - Automatic memory is off by default. The extension reads only messages currently rendered on newly visited supported chats and sends those messages to OpenAI after the chat settles. It makes another request if that conversation changes later. The user-supplied key is stored locally; do not bundle a shared key in this extension.
