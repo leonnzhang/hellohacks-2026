@@ -216,6 +216,8 @@ async function processAutoCapture(payload, sender) {
     const raw = await requestSuggestions(autoMemorySettings.apiKey, messages,
       [...memories.map((item) => item.text), ...memorySuggestions.map((item) => item.text)]);
     return await queueAutoStorage(async () => {
+      const { autoMemorySettings: currentSettings = {} } = await chrome.storage.local.get("autoMemorySettings");
+      if (!currentSettings.enabled || !currentSettings.apiKey) return { status: "disabled" };
       const { memories = [], memorySuggestions = [], autoMemoryProcessed = {}, memoryDeletionEpoch = {} } =
         await chrome.storage.local.get(["memories", "memorySuggestions", "autoMemoryProcessed", "memoryDeletionEpoch"]);
       if ((memoryDeletionEpoch[key] || 0) >= captureStartedAt) return { status: "stale" };
@@ -292,6 +294,10 @@ async function processInlineTransfer(payload, sender) {
       !(destination in globalThis.RELAY_TRANSFER.destinations)) {
     return { ok: false, message: "Open a supported conversation to transfer it." };
   }
+  const { autoMemorySettings = {} } = await chrome.storage.local.get("autoMemorySettings");
+  if (!autoMemorySettings.apiKey?.trim()) return {
+    ok: false, code: "API_KEY_REQUIRED", message: "Add and save your API key in Privacy & data before transferring."
+  };
   const messages = Array.isArray(capture.messages) ? capture.messages.filter((item) =>
     item && ["user", "assistant"].includes(item.role) && typeof item.text === "string" && item.text.trim()
   ).map((item) => ({ role: item.role, text: item.text.slice(0, 12000) })) : [];
@@ -454,9 +460,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === "INLINE_CONTEXT_STATUS") {
-    chrome.storage.local.get(["memories", "ragEnabled"])
-      .then(({ memories = [], ragEnabled = false }) => sendResponse({
-        count: globalThis.RELAY_TRANSFER.pickMemories(memories).length, ragEnabled: !!ragEnabled
+    chrome.storage.local.get(["memories", "ragEnabled", "autoMemorySettings"])
+      .then(({ memories = [], ragEnabled = false, autoMemorySettings = {} }) => sendResponse({
+        count: globalThis.RELAY_TRANSFER.pickMemories(memories).length, ragEnabled: !!ragEnabled,
+        savingActive: !!(autoMemorySettings.enabled && autoMemorySettings.apiKey)
       }))
       .catch(() => sendResponse({ count: 0, ragEnabled: false }));
     return true;

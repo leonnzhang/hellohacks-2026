@@ -336,6 +336,15 @@
   }
 
   function intercept(event) {
+    try {
+      if (!chrome.runtime?.id) {
+        pending = null;
+        memories = [];
+        ragEnabled = false;
+        pendingIndicator?.remove();
+        return;
+      }
+    } catch { return; }
     if (replaying || (pendingLoaded && !pending &&
       (hasExistingMessages() || (!memories.length && !ragEnabled)))) return;
     const input = composer();

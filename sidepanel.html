@@ -16,11 +16,10 @@
   <div class="workspace">
     <nav class="sidebar" aria-label="Memory Center sections">
       <p class="sidebar-label">MEMORY CENTER</p>
-      <button class="nav-item active" type="button" title="Overview" data-memory-tab="overview" aria-current="page"><span class="nav-icon" aria-hidden="true">◫</span>Overview</button>
-      <button class="nav-item" type="button" title="Saved memories" data-memory-tab="saved"><span class="nav-icon" aria-hidden="true">▤</span>Saved memories</button>
-      <button class="nav-item" type="button" title="Memory rules" data-memory-tab="rules"><span class="nav-icon" aria-hidden="true">✓</span>Memory rules</button>
-      <button class="nav-item" type="button" title="Privacy &amp; data" data-memory-tab="privacy"><span class="nav-icon" aria-hidden="true">⌁</span>Privacy &amp; data</button>
-      <div class="sidebar-foot">Stored in this browser</div>
+      <button class="nav-item active" type="button" data-memory-tab="overview" aria-current="page"><span class="nav-icon" aria-hidden="true">◫</span>Overview</button>
+      <button class="nav-item" type="button" data-memory-tab="saved"><span class="nav-icon" aria-hidden="true">▤</span>Saved memories</button>
+      <button class="nav-item" type="button" data-memory-tab="privacy"><span class="nav-icon" aria-hidden="true">⌁</span>Privacy &amp; data</button>
+      <div class="sidebar-bottom"><button class="nav-item" type="button" data-memory-tab="rules" aria-label="About memory"><span class="nav-icon" aria-hidden="true">ⓘ</span>About memory</button><div class="sidebar-foot">Stored in this browser</div></div>
     </nav>
   <main>
     <section id="handoff-view" class="view hidden">
@@ -44,37 +43,22 @@
           <option value="Claude">Claude</option>
           <option value="Gemini">Gemini</option>
         </select>
-        <p id="auto-memory-summary" class="fineprint">Core memories are checked before sending.</p>
+        <p id="auto-memory-summary" class="fineprint">Core memories are included automatically.</p>
         <details id="preview-details"><summary>Preview context</summary><textarea id="prompt-preview" rows="10" readonly aria-label="Context prompt preview"></textarea></details>
         <div class="action-row"><button id="copy-btn" class="button subtle">Copy prompt</button><button id="continue-btn" class="button primary">Open &amp; fill</button></div>
-        <p class="fineprint">Choose a destination to bring the context and continue automatically.</p>
+        <p class="fineprint">Send the context in the new chat, then write your next message there.</p>
       </section>
     </section>
 
     <section id="memory-view" class="view">
       <section id="overview-panel" class="memory-panel">
         <div class="panel-intro"><h1>Overview</h1><p>Your saved context at a glance.</p></div>
+        <section class="card saving-control"><div><h2>Memory saving <span id="saving-status" class="state-pill">Off</span></h2><p class="fineprint">Pause automatic saving anytime. Existing memories and transfers remain available.</p></div><button id="toggle-saving-btn" class="button subtle" type="button">Turn on</button></section>
         <div class="metric-grid">
-          <div class="metric"><strong id="overview-total">0</strong><span>Saved memories</span></div>
-          <div class="metric"><strong id="overview-ready">0</strong><span>Ready for transfer</span></div>
-          <div class="metric"><strong id="overview-auto">0</strong><span>Saved automatically</span></div>
+          <div class="metric"><strong id="overview-total">0</strong><span>All saved memories</span><small>Your complete memory collection</small></div>
+          <div class="metric"><strong id="overview-auto">0</strong><span>Automatically saved</span><small>Facts Relay saved from your chats</small></div>
+          <div class="metric"><strong id="overview-manual">0</strong><span>Saved by you</span><small>Memories you chose to add</small></div>
         </div>
-        <section class="card memory-map-card">
-          <div class="section-heading"><h2>Memory map</h2><span id="map-count" class="count">0 ready</span></div>
-          <p class="fineprint">Explore the memories available to carry into another chat.</p>
-          <div id="memory-map" class="memory-map"></div>
-          <div id="map-detail" class="map-detail hidden" role="status"></div>
-        </section>
-        <section class="card retrieval-card">
-          <div class="section-heading"><h2>Try a question</h2></div>
-          <p class="fineprint">Preview the context Relay would find for a new request.</p>
-          <form id="retrieval-form" class="retrieval-form">
-            <input id="retrieval-query" type="text" maxlength="6000" aria-label="Question to search saved context" placeholder="e.g. How should you explain this to me?">
-            <button id="retrieval-btn" class="button primary" type="submit">Find context</button>
-          </form>
-          <p id="retrieval-hint" class="fineprint"></p>
-          <div id="retrieval-results" class="retrieval-results" aria-live="polite"></div>
-        </section>
         <section class="card chart-card">
           <div class="section-heading"><h2>How memories were saved</h2></div>
           <div class="chart-row"><span>Added by you</span><div class="chart-track"><div id="manual-bar" class="chart-fill"></div></div><strong id="manual-count">0</strong></div>
@@ -82,7 +66,23 @@
           <div class="chart-row"><span>Earlier entries</span><div class="chart-track"><div id="older-bar" class="chart-fill tertiary"></div></div><strong id="older-count">0</strong></div>
           <p id="chart-caption" class="fineprint">Based on memories stored in this browser.</p>
         </section>
-        <section class="overview-note"><span class="note-icon" aria-hidden="true">↗</span><p>Choose a destination to continue automatically with your conversation and relevant core memories.</p></section>
+        <section class="card retrieval-card">
+          <div class="section-heading"><h2>Try a question</h2></div>
+          <p class="fineprint">See which saved context could help with your next message.</p>
+          <ol class="search-steps"><li>Your question</li><li>Match meaning</li><li>Highlight memories below</li></ol>
+          <form id="retrieval-form" class="retrieval-form">
+            <input id="retrieval-query" type="text" maxlength="6000" aria-label="Question to search saved context" placeholder="e.g. How should you explain this to me?">
+            <button id="retrieval-btn" class="button primary" type="submit">Find context</button>
+          </form>
+          <p id="retrieval-hint" class="fineprint"></p>
+          <div id="retrieval-results" class="retrieval-results" aria-live="polite"></div>
+          <section class="memory-map-card">
+          <div class="section-heading"><h2>Memory map</h2><span id="map-count" class="count">0 ready</span></div>
+          <p class="fineprint">Search above to highlight memories with related meaning. Select a memory to explore it.</p>
+          <div id="memory-map" class="memory-map"></div>
+          <div id="map-detail" class="map-detail hidden" role="status"></div>
+          </section>
+        </section>
       </section>
 
       <section id="saved-panel" class="memory-panel hidden">
@@ -103,7 +103,7 @@
       </section>
 
       <section id="rules-panel" class="memory-panel hidden">
-        <div class="panel-intro"><h1>Memory rules</h1><p>Useful facts that can help across chats.</p></div>
+        <div class="panel-intro"><h1>About memory</h1><p>What Relay remembers and how it helps.</p></div>
         <section class="card">
           <div class="section-heading"><h2>What we save</h2></div>
           <div id="memory-policy-list" class="policy-list"></div>
@@ -116,38 +116,36 @@
 
       <section id="privacy-panel" class="memory-panel hidden">
         <div class="panel-intro"><h1>Privacy &amp; data</h1><p>Where your information goes.</p></div>
-        <section class="card">
-          <div class="section-heading"><h2>OpenAI connection</h2><span id="connection-status" class="state-pill">No key</span></div>
-          <p class="fineprint">One API key for automatic memory and context search. Stored only in this Chrome profile. API charges may apply.</p>
-          <label for="auto-memory-key">OpenAI API key</label>
-          <input id="auto-memory-key" type="password" autocomplete="off" placeholder="Enter your API key" aria-describedby="key-state">
-          <p id="key-state" class="fineprint">No key saved.</p>
-          <div class="action-row settings-actions"><button id="remove-auto-key-btn" class="button subtle">Remove key</button><button id="save-auto-settings-btn" class="button primary">Save key</button></div>
-        </section>
-        <section class="card">
-          <div class="section-heading"><h2>Automatic memory</h2><span id="auto-memory-status" class="state-pill">Off</span></div>
-          <label class="toggle-label"><span>Save useful facts from chats</span><input id="auto-memory-enabled" type="checkbox" role="switch" aria-describedby="automatic-description"></label>
-          <p id="automatic-description" class="fineprint">After the assistant replies, Relay sends visible chat text to OpenAI to find lasting facts you explicitly state. Each saved memory shows its source and offers Undo for 10 seconds.</p>
-          <p id="auto-memory-error" class="save-state unsaved hidden" role="status"></p>
-        </section>
-        <section class="card">
-          <div class="section-heading"><h2>Context search</h2><span id="search-status" class="state-pill">Off</span></div>
-          <label class="toggle-label"><span>Find relevant saved context</span><input id="rag-enabled" type="checkbox" role="switch" aria-describedby="search-description"></label>
-          <p id="rag-status" class="fineprint">Off. Saved conversations and memories stay out of the search index.</p>
-          <p id="search-description" class="fineprint">Saved text and search questions are sent to OpenAI for embeddings. The search index stays in this browser. Turning this off clears the index.</p>
-        </section>
-        <p class="fineprint settings-note">Switches save immediately. You can review and remove memories in Saved memories.</p>
         <section class="card privacy-list">
           <div class="privacy-row"><span class="privacy-icon" aria-hidden="true">⌂</span><div><h2>Saved in this browser</h2><p>Memories and your API key stay in this Chrome profile. There is no Relay account or server database.</p></div></div>
           <div class="privacy-row"><span class="privacy-icon" aria-hidden="true">✦</span><div><h2>Automatic saving is optional</h2><p>When enabled, visible chats from ChatGPT, Claude, and Gemini are sent to OpenAI to find lasting facts. These may include allergies or accessibility needs you mention.</p></div></div>
-          <div class="privacy-row"><span class="privacy-icon" aria-hidden="true">↗</span><div><h2>Choose where to continue</h2><p>Choosing a transfer destination automatically sends your conversation and selected core memories to that service. If sending fails, the prepared draft stays available for you to send manually.</p></div></div>
+          <div class="privacy-row"><span class="privacy-icon" aria-hidden="true">↗</span><div><h2>Choose where to continue</h2><p>Choosing a destination sends your conversation to that service and continues it automatically. If sending fails, a draft stays available to send manually.</p></div></div>
+        </section>
+        <section class="card">
+          <div class="section-heading"><h2>Automatic saving</h2><span id="auto-memory-status" class="state-pill">Off</span></div>
+          <p class="fineprint">Add and save your key to transfer chats. You can also enable automatic saving and semantic search below.</p>
+          <label for="auto-memory-key">OpenAI API key</label>
+          <input id="auto-memory-key" type="password" autocomplete="off" placeholder="Enter your API key">
+          <p id="key-state" class="fineprint">No key saved.</p>
+          <div class="toggle-label"><input id="auto-memory-enabled" type="checkbox" aria-labelledby="remember-label" aria-describedby="remember-description saving-key-hint" disabled><span id="remember-label">Remember automatically</span></div>
+          <p id="remember-description" class="fineprint">Save useful facts from your chats.</p>
+          <p id="saving-key-hint" class="fineprint">Enter an API key above to enable automatic saving.</p>
+          <p class="fineprint">When on, visible chats are sent to OpenAI to extract memories. When off, you can still add memories yourself.</p>
+            <div class="toggle-label"><input id="rag-enabled" type="checkbox" aria-labelledby="relevant-label" aria-describedby="relevant-description saving-key-hint rag-status" disabled><span id="relevant-label">Find relevant memories</span></div>
+            <p id="relevant-description" class="fineprint">Use saved context that relates to your next message.</p>
+            <p id="rag-status" class="fineprint">Off. Saved conversations and memories stay out of the search index.</p>
+            <p class="fineprint">When on, saved text and search questions are sent to OpenAI for embeddings. The search index stays in this browser. Turning this off clears the index. API charges may apply.</p>
+          <p id="auto-memory-error" class="save-state unsaved hidden" role="status"></p>
+          <div class="action-row"><button id="save-auto-settings-btn" class="button primary" disabled>Save changes</button><button id="remove-auto-key-btn" class="button subtle">Disconnect key &amp; turn off</button></div>
+          <p class="fineprint">Disconnecting turns off automatic saving and semantic search and clears the search index. Your saved memories remain.</p>
+          <p class="fineprint">API charges may apply. You can edit or delete saved memories anytime.</p>
         </section>
       </section>
     </section>
   </main>
   </div>
 
-  <div id="status" class="status" role="status" aria-live="polite"><span id="status-text"></span><button id="dismiss-status" type="button" aria-label="Dismiss notification">×</button></div>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
   <script src="memory-policy.js"></script>
   <script src="transfer-core.js"></script>
   <script src="sidepanel.js"></script>

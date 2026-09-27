@@ -60,7 +60,7 @@ function harness({ existing = false, pending = null, sendSucceeds = false, noSen
     }
   };
   const chrome = {
-    runtime: { async sendMessage(message) {
+    runtime: { id: "test-extension", async sendMessage(message) {
       if (message.type === "GET_CORE_MEMORIES") return [{ id: "m1", text: "I prefer concise answers.", scope: "global", origin: "manual" }];
       if (message.type === "GET_PENDING_TRANSFER") return pending;
       if (message.type === "CLAIM_TRANSFER_SEND") {

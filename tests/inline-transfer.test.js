@@ -6,7 +6,7 @@ const vm = require("node:vm");
 
 test("inline transfer arms context before loading the destination chat", async () => {
   const template = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "prompts", "handoff.json"), "utf8"));
-  const stored = { memories: [
+  const stored = { autoMemorySettings: { apiKey: "test-key" }, memories: [
     { text: "I have a peanut allergy.", scope: "global", origin: "automatic", category: "health_context" },
     { text: "I enjoy hiking.", scope: "global", origin: "automatic", category: "hobbies_interests" },
     { text: "I am learning Rust this year.", scope: "global", origin: "automatic", category: "ongoing_goal" }
@@ -57,6 +57,11 @@ test("inline transfer arms context before loading the destination chat", async (
       { role: "assistant", text: "Let's make a short plan." }
     ]
   };
+  stored.autoMemorySettings.apiKey = "";
+  const blocked = await transfer({ destination: "Claude", capture }, sender);
+  assert.equal(blocked.code, "API_KEY_REQUIRED");
+  assert.equal(Object.keys(session).length, 0);
+  stored.autoMemorySettings.apiKey = "test-key";
   const result = await transfer({ destination: "Claude", capture }, sender);
   assert.equal(result.ok, true);
   assert.equal(result.destination, "Claude");
