@@ -1,8 +1,9 @@
-importScripts("memory-policy.js", "transfer-core.js");
+importScripts("memory-policy.js", "transfer-core.js", "rag-core.js");
 const MEMORY_MENU_ID = "relay-save-memory";
 const AUTO_MODEL = "gpt-6-luna";
 const autoInFlight = new Set();
 let autoStorageQueue = Promise.resolve();
+let ragStorageQueue = Promise.resolve();
 
 function normalizeMemory(text) {
   return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -42,6 +43,84 @@ function responseText(body) {
   return (body.output || []).flatMap((item) => item.content || [])
     .filter((item) => item.type === "output_text" && typeof item.text === "string")
     .map((item) => item.text).join("");
+}
+
+function ragSources(chats, memories) {
+  const chatSources = chats.filter((chat) => chat && chat.id && typeof chat.transcript === "string" && chat.transcript.trim())
+    .map((chat) => ({
+      parentId: `chat:${chat.id}`,
+      kind: "chat",
+      content: chat.transcript,
+      metadata: {
+        title: String(chat.title || "Saved conversation").slice(0, 120),
+        service: String(chat.service || "Chat"),
+        sourceUrl: String(chat.sourceUrl || ""),
+        createdAt: String(chat.updatedAt || chat.createdAt || "")
+      }
+    }));
+  const memorySources = memories.filter((memory) => memory?.id && typeof memory.text === "string" &&
+      globalThis.RELAY_TRANSFER.isEligibleMemory(memory))
+    .map((memory) => ({
+      parentId: `memory:${memory.id}`,
+      kind: "memory",
+      content: memory.text,
+      metadata: {
+        id: memory.id,
+        text: memory.text,
+        scope: memory.scope,
+        category: memory.category,
+        origin: memory.origin,
+        sourceUrl: memory.sourceUrl || "",
+        sourceQuote: memory.sourceQuote || "",
+        createdAt: memory.createdAt || ""
+      }
+    }));
+  return [...memorySources, ...chatSources];
+}
+
+async function syncRagIndex() {
+  const { ragEnabled = false, chats = [], memories = [], autoMemorySettings = {} } =
+    await chrome.storage.local.get(["ragEnabled", "chats", "memories", "autoMemorySettings"]);
+  if (!ragEnabled) {
+    await globalThis.RELAY_RAG.clear();
+    return { enabled: false, indexed: 0 };
+  }
+  const result = await globalThis.RELAY_RAG.syncSources(ragSources(chats, memories), autoMemorySettings.apiKey);
+  return { enabled: true, ...result };
+}
+
+function queueRagSync() {
+  const task = ragStorageQueue.then(async () => {
+    const result = await syncRagIndex();
+    const chunks = await globalThis.RELAY_RAG.count();
+    await chrome.storage.local.set({ ragLastError: "", ragChunkCount: chunks });
+    return { ...result, chunks };
+  });
+  ragStorageQueue = task.catch(async (error) => {
+    try { await chrome.storage.local.set({ ragLastError: error?.message || "Could not update the search index." }); }
+    catch { /* Keep the original sync error. */ }
+  });
+  return task;
+}
+
+async function retrieveContext(query, fallbackMemories = []) {
+  const memories = globalThis.RELAY_TRANSFER.pickMemories(fallbackMemories);
+  const { ragEnabled = false, autoMemorySettings = {} } =
+    await chrome.storage.local.get(["ragEnabled", "autoMemorySettings"]);
+  if (!ragEnabled) return { memories, relatedConversations: [] };
+  try {
+    const result = await globalThis.RELAY_RAG.search(query, autoMemorySettings.apiKey);
+    if (!result.indexedCount) return { memories, relatedConversations: [] };
+    return { memories: result.memories, relatedConversations: result.excerpts, ragUsed: true };
+  } catch (error) {
+    return { memories, relatedConversations: [], ragError: error?.message || "Search could not run." };
+  }
+}
+
+function lastUserMessage(messages) {
+  const message = [...(Array.isArray(messages) ? messages : [])].reverse()
+    .find((item) => item?.role === "user" && typeof item.text === "string")?.text || "";
+  return globalThis.RELAY_TRANSFER.stripAugmentedPrompt(message);
 }
 
 function validSuggestions(raw, messages, existingTexts) {
@@ -171,12 +250,15 @@ async function processInlineTransfer(payload, sender) {
   if (capture.captureMethod === "page text" || !messages.length) {
     return { ok: false, message: "Could not identify chat messages here. Try a different conversation." };
   }
+  const { memories = [] } = await chrome.storage.local.get("memories");
+  const context = await retrieveContext(lastUserMessage(messages), memories);
   const response = await fetch(chrome.runtime.getURL("prompts/handoff.json"));
   if (!response.ok) throw new Error("Could not load the handoff template.");
   const template = await response.json();
   const prompt = globalThis.RELAY_TRANSFER.buildPrompt({
     transcript: globalThis.RELAY_TRANSFER.formatTranscript(messages),
-    memories: [],
+    memories: context.ragUsed ? context.memories : [],
+    relatedConversations: context.relatedConversations,
     template
   });
   const url = globalThis.RELAY_TRANSFER.destinations[destination];
@@ -190,7 +272,8 @@ async function processInlineTransfer(payload, sender) {
     await chrome.tabs.remove(tab.id);
     throw error;
   }
-  return { ok: true, destination, count: 0 };
+  return { ok: true, destination, count: context.ragUsed ? context.memories.length : 0,
+    retrieved: context.relatedConversations.length, ragError: context.ragError || "" };
 }
 
 async function coreMemories(sender) {
@@ -232,6 +315,12 @@ chrome.runtime.onInstalled.addListener(() => {
       "https://gemini.google.com/*"
     ]
   });
+  queueRagSync().catch(() => {});
+});
+
+if (chrome.storage?.onChanged) chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && (changes.chats || changes.memories || changes.ragEnabled || changes.autoMemorySettings))
+    queueRagSync().catch(() => {});
 });
 
 chrome.action.onClicked.addListener(async (tab) => {
@@ -283,15 +372,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === "INLINE_CONTEXT_STATUS") {
-    chrome.storage.local.get("memories")
-      .then(({ memories = [] }) => sendResponse({ count: globalThis.RELAY_TRANSFER.pickMemories(memories).length }))
-      .catch(() => sendResponse({ count: 0 }));
+    chrome.storage.local.get(["memories", "ragEnabled"])
+      .then(({ memories = [], ragEnabled = false }) => sendResponse({
+        count: globalThis.RELAY_TRANSFER.pickMemories(memories).length, ragEnabled: !!ragEnabled
+      }))
+      .catch(() => sendResponse({ count: 0, ragEnabled: false }));
     return true;
   }
   if (message?.type === "INLINE_TRANSFER") {
     processInlineTransfer(message, sender)
       .then(sendResponse)
       .catch((error) => sendResponse({ ok: false, message: error.message || "Transfer failed." }));
+    return true;
+  }
+  if (message?.type === "RAG_RETRIEVE") {
+    chrome.storage.local.get("memories")
+      .then(({ memories = [] }) => retrieveContext(message.query, memories))
+      .then(sendResponse)
+      .catch((error) => sendResponse({ memories: [], relatedConversations: [], ragError: error?.message || "Search could not run." }));
+    return true;
+  }
+  if (message?.type === "RAG_REFRESH") {
+    queueRagSync().then(async (result) => {
+      sendResponse(result);
+    }).catch((error) => sendResponse({ error: error?.message || "Could not update search index." }));
+    return true;
+  }
+  if (message?.type === "RAG_CLEAR") {
+    globalThis.RELAY_RAG.clear().then(async () => {
+      await chrome.storage.local.set({ ragChunkCount: 0 });
+      sendResponse({ ok: true });
+    })
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "Could not clear search index." }));
+    return true;
+  }
+  if (message?.type === "RAG_STATUS") {
+    Promise.all([chrome.storage.local.get(["ragEnabled", "ragLastError"]), globalThis.RELAY_RAG.count()])
+      .then(([settings, chunks]) => sendResponse({ enabled: !!settings.ragEnabled, error: settings.ragLastError || "", chunks }))
+      .catch((error) => sendResponse({ enabled: false, error: error?.message || "Could not read search index.", chunks: 0 }));
     return true;
   }
   if (message?.type === "AUTO_MEMORY_STATUS") {

@@ -295,8 +295,8 @@
           const result = capture();
           const messageCount = result.messages.filter((item) => ["user", "assistant"].includes(item.role)).length;
           try {
-            const { count = 0 } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
-            shadow.querySelector(".context-count").textContent = `${messageCount} messages to transfer · ${count} core ${count === 1 ? "memory" : "memories"} available separately`;
+            const { count = 0, ragEnabled = false } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
+            shadow.querySelector(".context-count").textContent = `${messageCount} messages to transfer · ${count} core ${count === 1 ? "memory" : "memories"} available separately${ragEnabled ? " · semantic search on" : ""}`;
           } catch { shadow.querySelector(".context-count").textContent = `${messageCount} messages`; }
         }
       });
@@ -369,7 +369,7 @@
     status.textContent = `Opening ${destination}…`;
     try {
       const reply = await chrome.runtime.sendMessage({ type: "INLINE_TRANSFER", destination, capture: result });
-      status.textContent = reply?.ok ? `Chat ready in ${destination}. Type your message there; review context when sending.` :
+      status.textContent = reply?.ok ? `Chat ready in ${destination}. ${reply.count || 0} memories and ${reply.retrieved || 0} saved excerpts included.${reply.ragError ? ` Search issue: ${reply.ragError}` : ""} Review context when sending.` :
         (reply?.message || "Transfer failed.");
       if (reply?.prompt) {
         copy.dataset.prompt = reply.prompt;

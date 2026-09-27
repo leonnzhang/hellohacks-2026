@@ -4,8 +4,10 @@
 
   let pending = null;
   let memories = [];
+  let ragEnabled = false;
   let useMemories = true;
   let useTransfer = true;
+  let useRelated = true;
   let enabledMemoryIds = null;
   let reviewing = false;
   let replaying = false;
@@ -95,23 +97,54 @@
     if (badge || !document.body) return;
     badge = document.createElement("div");
     badge.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:2147483646;padding:9px 12px;border-radius:10px;background:#26313d;color:white;font:12px system-ui,sans-serif;box-shadow:0 3px 16px #0005";
-    badge.textContent = `Relay: Core memories ${memories.length ? (useMemories ? "on" : "off") + " (" + memories.length + ")" : "none"} · Transfer ${pending ? (useTransfer ? "on" : "off") : "none"}`;
+    badge.textContent = `Relay: Core memories ${memories.length ? (useMemories ? "on" : "off") + " (" + memories.length + ")" : "none"} · Search ${ragEnabled ? "on" : "off"} · Transfer ${pending ? (useTransfer ? "on" : "off") : "none"}`;
     badge.title = "Click to choose which context to include when sending";
     badge.style.cursor = "pointer";
     badge.addEventListener("click", () => { const input = composer(); if (input?.textContent || input?.value) reviewSend(input, inputText(input).trim()); });
     document.body.append(badge);
   }
 
-  function reviewSend(input, original) {
-    if (reviewing || (!pending && !memories.length)) return;
+  function hasExistingMessages() {
+    const messageSelectors = ["[data-message-author-role]", "[data-testid^='conversation-turn-']",
+      "[data-testid='user-message']", "[data-testid='assistant-message']", ".font-user-message",
+      ".font-claude-response", ".query-text", "[data-test-id='user-query']", "message-content", ".model-response-text"];
+    return messageSelectors.some((selector) => [...document.querySelectorAll(selector)]
+      .some((node) => (node.innerText || node.textContent || "").trim()));
+  }
+
+  async function reviewSend(input, original) {
+    if (reviewing || (!pending && !memories.length && (!ragEnabled || hasExistingMessages()))) return;
     reviewing = true;
     const transfer = pending;
-    let selectedMemories = useMemories && memories.length > 0;
-    const selectedIds = new Set(enabledMemoryIds || memories.map((memory, index) => memory.id || String(index)));
+    let reviewMemories = memories;
+    let relatedConversations = [];
+    let ragError = "";
+    if (transfer || !hasExistingMessages()) {
+      try {
+        const result = await chrome.runtime.sendMessage({ type: "RAG_RETRIEVE", query: original });
+        if (result?.ragUsed) {
+          reviewMemories = Array.isArray(result.memories) ? result.memories.slice(0, 7) : memories;
+          relatedConversations = Array.isArray(result.relatedConversations) ? result.relatedConversations : [];
+        }
+        ragError = result?.ragError || "";
+        if (!transfer && !memories.length && !reviewMemories.length && !relatedConversations.length && !ragError && sendButton(input)) {
+          reviewing = false;
+          replaying = true;
+          sendButton(input)?.click();
+          setTimeout(() => { replaying = false; }, 500);
+          return;
+        }
+      } catch (error) { ragError = error?.message || "Semantic search could not run."; }
+    }
+    let selectedMemories = useMemories && reviewMemories.length > 0;
+    const selectedIds = new Set(enabledMemoryIds || reviewMemories.map((memory, index) => memory.id || String(index)));
     selectedMemories = selectedMemories && selectedIds.size > 0;
     let selectedTransfer = useTransfer && !!transfer;
+    let selectedRelated = useRelated && relatedConversations.length > 0;
     const combinedText = () => globalThis.RELAY_TRANSFER.buildSendPrompt({
-      memories: selectedMemories ? memories.filter((memory, index) => selectedIds.has(memory.id || String(index))) : [], transfer: selectedTransfer ? transfer?.prompt || "" : ""
+      memories: selectedMemories ? reviewMemories.filter((memory, index) => selectedIds.has(memory.id || String(index))) : [],
+      transfer: selectedTransfer ? transfer?.prompt || "" : "",
+      relatedConversations: selectedRelated ? relatedConversations : []
     }, original);
     const host = document.createElement("div");
     host.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#0009;display:grid;place-items:center;padding:16px";
@@ -123,7 +156,7 @@
     </style><section role="dialog" aria-modal="true" aria-labelledby="relay-review-title">
       <h2 id="relay-review-title">Review what ${location.hostname} will receive</h2>
       <p>Choose context for this message. Review the exact text below before sending; it will appear in the chat history.</p>
-      <div class="choices"><label><input type="checkbox" data-choice="memories"> Core memories (<span data-count></span>)</label><div data-memory-list style="display:grid;gap:6px;padding-left:24px"></div><label data-transfer-row><input type="checkbox" data-choice="transfer"> Transferred conversation (first message only)</label></div>
+      <div class="choices"><label><input type="checkbox" data-choice="memories"> Core memories (<span data-count></span>)</label><div data-memory-list style="display:grid;gap:6px;padding-left:24px"></div><label data-related-row hidden><input type="checkbox" data-choice="related"> Related saved chat excerpts (<span data-related-count></span>)</label><label data-transfer-row><input type="checkbox" data-choice="transfer"> Transferred conversation (first message only)</label></div>
       <textarea readonly aria-label="Complete outgoing message"></textarea>
       <p class="error" role="status" hidden></p>
       <div class="actions"><button type="button" data-action="cancel">Cancel</button><button type="button" data-action="original">Send without context</button><button type="button" data-action="copy">Copy combined message</button><button type="button" class="primary" data-action="context">Send with context</button></div>
@@ -131,10 +164,10 @@
     const preview = shadow.querySelector("textarea");
     const memoryChoice = shadow.querySelector("[data-choice=memories]");
     const transferChoice = shadow.querySelector("[data-choice=transfer]");
-    shadow.querySelector("[data-count]").textContent = memories.length;
-    memoryChoice.disabled = !memories.length;
+    shadow.querySelector("[data-count]").textContent = reviewMemories.length;
+    memoryChoice.disabled = !reviewMemories.length;
     const memoryList = shadow.querySelector("[data-memory-list]");
-    memories.forEach((memory, index) => {
+    reviewMemories.forEach((memory, index) => {
       const label = document.createElement("label");
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
@@ -154,23 +187,29 @@
     memoryChoice.checked = selectedMemories;
     shadow.querySelector("[data-transfer-row]").hidden = !transfer;
     transferChoice.checked = selectedTransfer;
+    const relatedChoice = shadow.querySelector("[data-choice=related]");
+    shadow.querySelector("[data-related-count]").textContent = relatedConversations.length;
+    shadow.querySelector("[data-related-row]").hidden = !relatedConversations.length;
+    relatedChoice.checked = selectedRelated;
     const updatePreview = () => { preview.value = combinedText(); };
     memoryChoice.addEventListener("change", () => {
       selectedMemories = memoryChoice.checked; useMemories = selectedMemories;
       selectedIds.clear();
       memoryList.querySelectorAll("input").forEach((checkbox, index) => {
         checkbox.checked = selectedMemories;
-        if (selectedMemories) selectedIds.add(memories[index].id || String(index));
+        if (selectedMemories) selectedIds.add(reviewMemories[index].id || String(index));
       });
       enabledMemoryIds = new Set(selectedIds);
       updatePreview();
     });
     transferChoice.addEventListener("change", () => { selectedTransfer = transferChoice.checked; useTransfer = selectedTransfer; updatePreview(); });
+    relatedChoice.addEventListener("change", () => { selectedRelated = relatedChoice.checked; useRelated = selectedRelated; updatePreview(); });
     updatePreview();
     document.body.append(host);
     activeReviewHost = host;
     const buttons = [...shadow.querySelectorAll("button")];
     const error = shadow.querySelector(".error");
+    if (ragError) { error.textContent = `Semantic search unavailable; saved core memories remain available. ${ragError}`; error.hidden = false; }
     const close = () => { host.remove(); reviewing = false; activeReviewHost = null; activeReviewClose = null; };
     activeReviewClose = close;
     shadow.querySelector("[data-action='cancel']").focus();
@@ -220,7 +259,7 @@
   }
 
   function intercept(event) {
-    if ((!pending && !memories.length) || reviewing || replaying) return;
+    if ((!pending && !memories.length && (!ragEnabled || hasExistingMessages())) || reviewing || replaying) return;
     const input = composer();
     if (!input) return;
     let isSend = false;
@@ -253,11 +292,15 @@
     try {
       memories = await chrome.runtime.sendMessage({ type: "GET_CORE_MEMORIES" }) || [];
       pending = await chrome.runtime.sendMessage({ type: "GET_PENDING_TRANSFER" });
+      const search = await chrome.runtime.sendMessage({ type: "RAG_STATUS" });
+      ragEnabled = !!search?.enabled;
       removeBadge();
-      if (memories.length || pending) showBadge();
+      if (memories.length || pending || ragEnabled) showBadge();
     } catch { /* Extension may have reloaded. */ }
   }
   refresh();
   setTimeout(refresh, 1000);
-  chrome.storage.onChanged.addListener((changes, area) => { if (area === "local" && changes.memories) refresh(); });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && (changes.memories || changes.ragEnabled)) refresh();
+  });
 })();

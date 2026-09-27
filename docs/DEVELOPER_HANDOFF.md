@@ -4,7 +4,7 @@
 
 This is an unpacked Chrome Manifest V3 extension with no build step. Load the repository directory at `chrome://extensions` using **Developer mode → Load unpacked**. Reload the extension after code changes, then reload already-open chat tabs before retesting site integration.
 
-The main product requirements are in [PRODUCT_BRIEF.md](PRODUCT_BRIEF.md). Keep all persistent user data in `chrome.storage.local`. Do not add a backend or remote database.
+The main product requirements are in [PRODUCT_BRIEF.md](PRODUCT_BRIEF.md). Keep saved conversations and memories in `chrome.storage.local`; keep semantic search data in local IndexedDB. Do not add a backend or remote database.
 
 ## File map
 
@@ -15,6 +15,7 @@ The main product requirements are in [PRODUCT_BRIEF.md](PRODUCT_BRIEF.md). Keep 
 | `content.js` | Reads visible chat messages, places the chat-native transfer control, and samples theme values. |
 | `transfer-review.js` | Intercepts the destination's first send, shows the complete message for approval, and fills the composer after approval. |
 | `transfer-core.js` | Core memory selection and handoff prompt construction for the inline flow. |
+| `rag-core.js` | Chunks saved context, stores embeddings in local IndexedDB, and performs cosine-similarity retrieval. |
 | `sidepanel.html`, `sidepanel.css` | Memory Center split view, sidebar, chart, and privacy controls. |
 | `sidepanel.js` | UI state, storage, prompt assembly, tab messaging, and destination flow. |
 | `prompts/handoff.json` | Wording for the generated **user** prompt. It is not a model system prompt. |
@@ -22,7 +23,7 @@ The main product requirements are in [PRODUCT_BRIEF.md](PRODUCT_BRIEF.md). Keep 
 
 ## Data and flow
 
-`chrome.storage.local` has two persistent keys:
+Relevant `chrome.storage.local` records and settings include:
 
 ```js
 chats: [{ id, title, service, sourceUrl, transcript, createdAt, updatedAt? }]
@@ -31,19 +32,24 @@ memorySuggestions: [{ id, text, quote, sourceUrl, sourceTitle, createdAt }]
 autoMemorySettings: { enabled, apiKey }
 autoMemoryProcessed: { [sourceUrl]: snapshotHash }
 autoMemoryLastError: string
+ragEnabled: boolean
+ragLastError: string
+ragChunkCount: number
 ```
+
+When semantic search is enabled, eligible saved memories and saved conversation transcripts are chunked and embedded with OpenAI `text-embedding-3-small`. Text, vectors, and source metadata are stored in the `relay-memory-rag` IndexedDB database. The index is synchronized when chats or memories change and cleared when search is turned off.
 
 `sidepanel.js` sends `CAPTURE` to the active supported tab. `content.js` extracts role/text pairs using service-specific DOM selectors, then falls back to visible page text when needed. The inline Transfer menu formats detected messages for a pending destination transfer. The older panel capture flow remains in code but its Handoff view is hidden for the demo. **Save conversation** creates a new entry; choosing an existing entry changes the action to **Update conversation**. Save writes to `chats`, reads it back, and checks the saved ID and transcript before reporting success.
 
 Memories can be entered in Memory Center or by right-click selection on a supported page. With opt-in enabled, the content script sends a settled, visible conversation to the service worker. The worker asks OpenAI for facts in the fixed [core memory template](MEMORY_TEMPLATE.md), validates each category and user-message quote, and saves qualifying facts directly. The user can see the category reason and quote, then edit or delete the fact. Earlier pending suggestions from version 0.2 remain reviewable. A send can include up to seven separately selected core memories. Older noncore or unscoped records and automatic records in retired categories remain visible but excluded until the user edits and saves one as core.
 
-The legacy Handoff panel remains hidden in the current UI. Its read-only preview is assembled from `prompts/handoff.json`, automatically picked memories, and the current transcript. A transcript over 20,000 characters is shortened by retaining its beginning and end. The active inline Transfer flow opens a blank destination tab and stores pending context for its first send.
+The legacy Handoff panel remains hidden in the current UI. Its read-only preview is assembled from `prompts/handoff.json`, automatically picked memories, retrieved saved excerpts, and the current transcript. A transcript over 20,000 characters is shortened by retaining its beginning and end. The active inline Transfer flow opens a blank destination tab and stores pending context for its first send. When semantic search is on, the first message in a new chat can also retrieve relevant saved context; the review dialog shows the exact outgoing text and lets the user toggle retrieved excerpts.
 
 The [chat-native UI](UI_DIRECTION.md) adds a small Transfer button beside a detected composer. Its menu asks the service worker to assemble context and open a blank destination chat. The service worker stores that context under the destination tab ID in `chrome.storage.session`, restricted to the matching origin and 30 minutes. `transfer-review.js` intercepts the first send, shows the complete augmented message, and continues only after the user chooses an action. After approval, it verifies composer insertion before replaying the site's Send action. The Memory Center link and toolbar icon open the same centered overlay on supported chat tabs.
 
 ## Permissions and privacy
 
-The extension uses `storage`, `tabs`, `contextMenus`, and `scripting`, with host access for ChatGPT, Claude, Gemini, and the OpenAI API listed in `manifest.json`. The service worker sets local-storage access to trusted extension contexts. Saved conversations and memories stay in the current Chrome profile; there is no sync. If automatic memory is enabled, visible chat messages are sent to OpenAI for extraction. Handoff content reaches a destination chat service only after the user reviews the exact outgoing message and chooses to send it. The user-facing data flow is summarized in [PRIVACY.md](PRIVACY.md).
+The extension uses `storage`, `tabs`, `contextMenus`, and `scripting`, with host access for ChatGPT, Claude, Gemini, and the OpenAI API listed in `manifest.json`. The service worker sets local-storage access to trusted extension contexts. Saved conversations and memories stay in the current Chrome profile; there is no sync. Automatic memory sends visible chat messages to OpenAI for extraction when enabled. Semantic search sends saved text and retrieval queries to OpenAI for embeddings when enabled; its index stays in local IndexedDB. Handoff content reaches a destination chat service only after the user reviews the exact outgoing message and chooses to send it. The user-facing data flow is summarized in [PRIVACY.md](PRIVACY.md).
 
 ## Verification status
 

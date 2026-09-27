@@ -106,6 +106,12 @@
           <div class="privacy-row"><span class="privacy-icon" aria-hidden="true">↗</span><div><h2>You review transfers</h2><p>The extension fills a draft in the destination chat. You choose whether to send it.</p></div></div>
         </section>
         <section class="card">
+          <div class="section-heading"><h2>Semantic search</h2></div>
+          <label class="toggle-label"><input id="rag-enabled" type="checkbox"> Search saved conversations and memories for relevant context</label>
+          <p id="rag-status" class="fineprint">Off. Saved conversations and memories stay out of the search index.</p>
+          <p class="fineprint">When enabled, saved text is sent to OpenAI to create embeddings. The searchable text and vectors stay in this browser. Embeddings are also sent for each retrieval query. Use the OpenAI API key below; charges may apply. Turning this off clears the local search index.</p>
+        </section>
+        <section class="card">
           <div class="section-heading"><h2>Automatic saving</h2><span id="auto-memory-status" class="state-pill">Off</span></div>
           <label class="toggle-label"><input id="auto-memory-enabled" type="checkbox"> Save useful facts automatically</label>
           <label for="auto-memory-key">OpenAI API key</label>

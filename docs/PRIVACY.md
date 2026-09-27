@@ -4,15 +4,17 @@ Relay Memory is a Chrome extension for transferring chat context and keeping reu
 
 ## Data kept in Chrome
 
-The extension stores saved memories, their source quotes when available, your automatic-saving setting, and a user-supplied OpenAI API key in `chrome.storage.local` in the current Chrome profile. Older versions may also have saved conversations and pending memory suggestions there. The extension has no Relay Memory account, sync service, or server database.
+The extension stores saved memories, saved conversations, settings, and a user-supplied OpenAI API key in `chrome.storage.local` in the current Chrome profile. When semantic search is enabled, searchable text and its vectors are stored in local IndexedDB. The extension has no Relay Memory account, sync service, or server database.
 
-You can edit or delete memories in Memory Center and remove the API key there. Removing a memory from Relay Memory does not delete messages already sent to a chat service.
+You can edit or delete memories and conversations in Memory Center and remove the API key there. Removing a memory from Relay Memory does not delete messages already sent to a chat service. Turning semantic search off clears its local index; removing the API key also turns search off.
 
 ## When chat text leaves your browser
 
-Automatic saving is off by default. If you enable it and supply an OpenAI API key, the extension sends messages currently visible in supported ChatGPT, Claude, and Gemini chats to the OpenAI API to extract lasting facts. The request sets `store: false`. The extension checks suggested facts against allowed categories and quotes from your own messages before saving them. This process may still save an incorrect fact; you can review, edit, or delete it in Memory Center. The allowed categories include a minimal, enduring allergy or accessibility need you explicitly state.
+Automatic saving and semantic search are off by default. If you enable automatic saving and supply an OpenAI API key, the extension sends messages currently visible in supported ChatGPT, Claude, and Gemini chats to the OpenAI API to extract lasting facts. The request sets `store: false`. The extension checks suggested facts against allowed categories and quotes from your own messages before saving them. This process may still save an incorrect fact; you can review, edit, or delete it in Memory Center. The allowed categories include a minimal, enduring allergy or accessibility need you explicitly state.
 
-A transfer opens a new chat and keeps the captured conversation in that tab's extension session storage for up to 30 minutes. When you send your first message, Relay shows separate controls for up to seven eligible core memories and the transferred conversation, plus the exact outgoing text and destination. It sends that text only if you choose **Send with context**. You can send your original message without context or cancel. The combined text appears in the destination chat history.
+If you enable semantic search, saved conversation text and eligible memories are sent to OpenAI's embeddings API when the local index is built or updated. A query is sent for an embedding when Relay retrieves context. The searchable text and vectors remain in local IndexedDB. Disabling search deletes this index.
+
+A transfer opens a new chat and keeps the captured conversation in that tab's extension session storage for up to 30 minutes. When you send your first message, Relay shows separate controls for core memories, relevant saved chat excerpts, and the transferred conversation, plus the exact outgoing text and destination. It sends that text only if you choose **Send with context**. You can send your original message without context or cancel. The combined text appears in the destination chat history.
 
 ## Access
 

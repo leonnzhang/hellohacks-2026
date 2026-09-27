@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Relay Memory",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "minimum_chrome_version": "116",
   "description": "Carry conversations and your saved memories between AI chats.",
   "permissions": ["storage", "tabs", "contextMenus", "scripting"],
@@ -15,7 +15,7 @@
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "Open Memory Center" },
   "web_accessible_resources": [{
-    "resources": ["sidepanel.html", "sidepanel.css", "sidepanel.js", "memory-policy.js", "transfer-core.js", "prompts/handoff.json"],
+    "resources": ["sidepanel.html", "sidepanel.css", "sidepanel.js", "memory-policy.js", "transfer-core.js", "rag-core.js", "prompts/handoff.json"],
     "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*", "https://claude.ai/*", "https://gemini.google.com/*"]
   }],
   "content_scripts": [

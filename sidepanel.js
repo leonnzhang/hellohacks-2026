@@ -7,6 +7,9 @@ const state = {
   memories: [],
   memorySuggestions: [],
   autoMemorySettings: { enabled: false, apiKey: "" },
+  ragEnabled: false,
+  ragChunks: 0,
+  ragLastError: "",
   autoMemoryLastError: "",
   selectedChatId: "",
   editingMemoryId: "",
@@ -28,11 +31,12 @@ function formatTranscript(messages) {
   return globalThis.RELAY_TRANSFER.formatTranscript(messages);
 }
 
-function buildPrompt() {
+function buildPrompt(retrieved = null) {
   if (!handoffTemplate) return "";
   return globalThis.RELAY_TRANSFER.buildPrompt({
     transcript: $("transcript").value,
-    memories: pickMemories(state.memories),
+    memories: retrieved ? retrieved.memories : pickMemories(state.memories),
+    relatedConversations: retrieved?.relatedConversations || [],
     template: handoffTemplate
   });
 }
@@ -51,13 +55,46 @@ function refreshPrompt() {
   $("prompt-preview").value = buildPrompt();
   const chosen = pickMemories(state.memories);
   const count = chosen.length;
-  $("auto-memory-summary").textContent = count
-    ? `${count} core ${count === 1 ? "memory" : "memories"} included automatically.`
-    : "No core memories saved yet. You can manage memories in the Memory tab.";
+  $("auto-memory-summary").textContent = state.ragEnabled
+    ? "Saved memories and conversations will be searched for relevant context when you prepare the transfer."
+    : count
+      ? `${count} core ${count === 1 ? "memory" : "memories"} included automatically.`
+      : "No core memories saved yet. You can manage memories in the Memory tab.";
 }
 
 function pickMemories(memories) {
   return globalThis.RELAY_TRANSFER.pickMemories(memories);
+}
+
+function retrievalQuery(transcript) {
+  const matches = [...String(transcript || "").matchAll(/(?:^|\n\n)USER:\n([\s\S]*?)(?=\n\n(?:USER|ASSISTANT):|$)/g)];
+  return (matches.at(-1)?.[1] || String(transcript || "").slice(-1800)).trim().slice(-6000);
+}
+
+async function preparePrompt() {
+  let retrieved = null;
+  try {
+    retrieved = await chrome.runtime.sendMessage({ type: "RAG_RETRIEVE", query: retrievalQuery($("transcript").value) });
+  } catch { /* Saved core memories remain available if retrieval is unavailable. */ }
+  const prompt = buildPrompt(retrieved && Array.isArray(retrieved.memories) ? retrieved : null);
+  $("prompt-preview").value = prompt;
+  if (retrieved?.ragError) status(`Search unavailable; using saved memories. ${retrieved.ragError}`, true);
+  else if (retrieved?.ragUsed) status(`Found ${retrieved.memories.length} relevant memories and ${retrieved.relatedConversations.length} saved chat excerpts.`);
+  return prompt;
+}
+
+async function syncRagAfterSave() {
+  if (!state.ragEnabled) return;
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "RAG_REFRESH" });
+    if (result?.error) throw new Error(result.error);
+    state.ragChunks = result?.chunks || 0;
+    state.ragLastError = "";
+    renderRagSettings();
+  } catch (error) {
+    state.ragLastError = error.message || "Could not update the search index.";
+    renderRagSettings();
+  }
 }
 
 function setSaveState(message, unsaved = false) {
@@ -221,6 +258,61 @@ function renderAutoSettings() {
   $("auto-memory-error").classList.toggle("hidden", !state.autoMemoryLastError);
 }
 
+function renderRagSettings() {
+  $("rag-enabled").checked = !!state.ragEnabled;
+  $("rag-status").textContent = state.ragLastError
+    ? `Search index issue: ${state.ragLastError}`
+    : state.ragEnabled
+      ? state.ragChunks ? `Ready · ${state.ragChunks} searchable text sections stored locally.`
+        : state.chats.some((chat) => chat.transcript?.trim()) || pickMemories(state.memories).length
+          ? "Enabled · preparing the local search index."
+          : "On · save a conversation or eligible memory to build the index."
+      : "Off. Saved conversations and memories stay out of the search index.";
+}
+
+async function refreshRagStatus() {
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "RAG_STATUS" });
+    state.ragEnabled = !!result?.enabled;
+    state.ragChunks = result?.chunks || 0;
+    state.ragLastError = result?.error || "";
+    renderRagSettings();
+    refreshPrompt();
+  } catch { /* The extension worker may be restarting. */ }
+}
+
+async function saveRagSetting(event) {
+  const enabled = event.target.checked;
+  if (enabled && !state.autoMemorySettings.apiKey) {
+    state.ragEnabled = false;
+    renderRagSettings();
+    return status("Add and save the OpenAI API key below before enabling semantic search.", true);
+  }
+  try {
+    await chrome.storage.local.set({ ragEnabled: enabled, ragLastError: "" });
+    state.ragEnabled = enabled;
+    state.ragLastError = "";
+    renderRagSettings();
+    const result = enabled
+      ? await chrome.runtime.sendMessage({ type: "RAG_REFRESH" })
+      : await chrome.runtime.sendMessage({ type: "RAG_CLEAR" });
+    if (result?.error) throw new Error(result.error);
+    if (enabled) {
+      state.ragChunks = result?.chunks || 0;
+      status(`Semantic search is ready with ${state.ragChunks} local text sections.`);
+    } else {
+      state.ragChunks = 0;
+      status("Semantic search disabled and its local index cleared.");
+    }
+    renderRagSettings();
+    refreshPrompt();
+  } catch (error) {
+    state.ragLastError = error.message || "Could not update the search index.";
+    renderRagSettings();
+    status(`Could not update semantic search: ${error.message}`, true);
+  }
+}
+
 function renderSuggestions() {
   const list = $("suggestion-list");
   list.replaceChildren();
@@ -274,6 +366,7 @@ async function acceptSuggestion(suggestion, editedText) {
     }
     const remaining = memorySuggestions.filter((item) => item.id !== suggestion.id);
     await chrome.storage.local.set({ memories, memorySuggestions: remaining });
+    await syncRagAfterSave();
     state.memories = memories;
     state.memorySuggestions = remaining;
     renderMemories();
@@ -317,11 +410,16 @@ async function saveAutoSettings() {
 
 async function removeAutoKey() {
   const autoMemorySettings = { enabled: false, apiKey: "" };
-  await chrome.storage.local.set({ autoMemorySettings, autoMemoryLastError: "" });
+  await chrome.storage.local.set({ autoMemorySettings, autoMemoryLastError: "", ragEnabled: false, ragLastError: "" });
   state.autoMemorySettings = autoMemorySettings;
   state.autoMemoryLastError = "";
+  state.ragEnabled = false;
+  state.ragChunks = 0;
+  state.ragLastError = "";
   $("auto-memory-key").value = "";
   renderAutoSettings();
+  renderRagSettings();
+  await chrome.runtime.sendMessage({ type: "RAG_CLEAR" }).catch(() => {});
   status("API key removed and automatic memory disabled.");
 }
 
@@ -360,6 +458,7 @@ async function saveMemory() {
       sourceUrl: "", createdAt: new Date().toISOString() });
   }
   await chrome.storage.local.set({ memories });
+  await syncRagAfterSave();
   state.memories = memories;
   renderMemories();
   refreshPrompt();
@@ -371,6 +470,7 @@ async function deleteMemory(id) {
   const { memories = [] } = await chrome.storage.local.get("memories");
   const remaining = memories.filter((memory) => memory.id !== id);
   await chrome.storage.local.set({ memories: remaining });
+  await syncRagAfterSave();
   state.memories = remaining;
   renderMemories();
   refreshPrompt();
@@ -441,6 +541,7 @@ async function saveChat() {
       throw new Error("The saved conversation could not be read back from Chrome storage.");
     }
     state.chats = stored;
+    await syncRagAfterSave();
     renderChats();
     refreshPrompt();
     const title = $("chat-title").value.trim() || "Untitled conversation";
@@ -459,6 +560,7 @@ async function deleteChat() {
   const { chats = [] } = await chrome.storage.local.get("chats");
   const remaining = chats.filter((chat) => chat.id !== state.selectedChatId);
   await chrome.storage.local.set({ chats: remaining });
+  await syncRagAfterSave();
   state.chats = remaining;
   state.selectedChatId = "";
   state.draftSource = "Manual";
@@ -482,8 +584,8 @@ function selectChat(id) {
   setSaveState(chat ? `Loaded saved conversation “${chat.title}”.` : "New unsaved conversation. Capture or paste text, then save.");
 }
 
-async function copyPrompt() {
-  const prompt = buildPrompt();
+async function copyPrompt(preparedPrompt = null) {
+  const prompt = typeof preparedPrompt === "string" ? preparedPrompt : await preparePrompt();
   if (!prompt) {
     status("Add a conversation or memory first.", true);
     return false;
@@ -502,7 +604,7 @@ async function copyPrompt() {
 }
 
 async function openAndFill() {
-  const prompt = buildPrompt();
+  const prompt = await preparePrompt();
   if (!prompt) return status("Add context to the prompt first.", true);
   const destination = $("destination").value;
   $("continue-btn").disabled = true;
@@ -520,7 +622,7 @@ async function openAndFill() {
         if (response?.reason === "Text mismatch") break;
       } catch { /* The destination page or content script is still loading. */ }
     }
-    const copied = await copyPrompt();
+    const copied = await copyPrompt(prompt);
     status(copied
       ? `Fill was incomplete. In ${destination}, select all composer text and paste the copied prompt.`
       : `Fill was incomplete. Select all composer text, then copy and paste the prompt manually.`, true);
@@ -549,6 +651,7 @@ async function init() {
   renderMemories();
   renderSuggestions();
   renderAutoSettings();
+  await refreshRagStatus();
   refreshPrompt();
   switchView("memory");
   switchMemoryTab("overview");
@@ -571,6 +674,7 @@ async function init() {
   $("chat-select").addEventListener("change", (event) => selectChat(event.target.value));
   $("save-memory-btn").addEventListener("click", saveMemory);
   $("save-auto-settings-btn").addEventListener("click", saveAutoSettings);
+  $("rag-enabled").addEventListener("change", saveRagSetting);
   $("remove-auto-key-btn").addEventListener("click", removeAutoKey);
   $("cancel-edit-btn").addEventListener("click", clearMemoryForm);
   $("copy-btn").addEventListener("click", copyPrompt);
@@ -597,6 +701,16 @@ async function init() {
       state.autoMemoryLastError = changes.autoMemoryLastError.newValue || "";
       renderAutoSettings();
     }
+    if (changes.ragEnabled) {
+      state.ragEnabled = !!changes.ragEnabled.newValue;
+      renderRagSettings();
+      refreshPrompt();
+    }
+    if (changes.ragLastError) {
+      state.ragLastError = changes.ragLastError.newValue || "";
+      renderRagSettings();
+    }
+    if ((changes.chats || changes.memories || changes.ragChunkCount) && state.ragEnabled) refreshRagStatus();
   });
 }
 

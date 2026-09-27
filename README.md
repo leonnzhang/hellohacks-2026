@@ -1,6 +1,6 @@
 # Relay Memory
 
-A Chrome extension for two connected actions: carry a chat into another AI service, and reuse saved memories across chats. Saved data stays in `chrome.storage.local`. There is no backend, account, or remote database. Optional automatic memory sends newly visited chats to the OpenAI API when enabled.
+A Chrome extension for carrying chats and relevant saved context between AI services. Conversations and memories stay in `chrome.storage.local`; the optional semantic search index stays in local IndexedDB. There is no backend, account, or remote database. Optional automatic memory and semantic search send content to the OpenAI API only when enabled.
 
 ## Project docs
 
@@ -23,7 +23,7 @@ A Chrome extension for two connected actions: carry a chat into another AI servi
 1. Open a ChatGPT, Claude, or Gemini conversation and click **Transfer** beside the composer.
 2. Choose a destination. The extension opens a blank chat. Write your next message there; when you send it, Relay shows the exact message with independently selected transfer context and up to seven core memories added. Choose **Send with context** to send it, **Send without context** to send your original message, or **Cancel**.
 3. Open **Memory Center** from the Transfer menu or extension icon. Use the left sidebar to see an overview, manage saved memories, review memory rules, and read Privacy & data. You can also save selected text with the page's right-click menu.
-4. To enable automatic memory, open **Privacy & data**, enter your own OpenAI API key, and turn on automatic saving. Core facts grounded in your messages are saved as supported chats settle.
+4. To enable automatic memory or semantic search, open **Privacy & data**, enter your own OpenAI API key, and enable the feature. Semantic search embeds saved conversations and eligible memories, then retrieves relevant context for a transfer or the first message in a new chat. Text and vectors stay in this browser; queries are sent to OpenAI for embeddings.
 
 The **Memory Center** link and toolbar icon open the same centered overlay on supported chat tabs. Transfer stays beside the chat composer.
 
@@ -37,3 +37,4 @@ The **Memory Center** link and toolbar icon open the same centered overlay on su
 - The reusable handoff wording lives in `prompts/handoff.json`. It is sent as a user prompt; this extension has no model system prompt. Technique templates are not part of the current codebase.
 - `chrome.storage.local` belongs to the current Chrome profile; it does not sync saved context to other devices.
 - Automatic memory is off by default. The extension reads only messages currently rendered on newly visited supported chats and sends those messages to OpenAI after the chat settles. It makes another request if that conversation changes later. The user-supplied key is stored locally; do not bundle a shared key in this extension.
+- Semantic search is off by default. When enabled, saved conversation and eligible memory text is sent to OpenAI to create embeddings; the index and searchable text remain in local IndexedDB. Disabling search clears the index.
