@@ -27,7 +27,7 @@ test("ChatGPT capture falls back when its primary selector finds only one role",
       return [];
     }
   };
-  const chrome = { runtime: { onMessage: { addListener() {} } } };
+  const chrome = { runtime: { id: "test-extension", onMessage: { addListener() {} } } };
   const context = vm.createContext({
     document, chrome, location: { hostname: "chatgpt.com", href: "https://chatgpt.com/c/example" },
     Node: { DOCUMENT_POSITION_FOLLOWING: 4 }, addEventListener() {}
@@ -62,7 +62,7 @@ test("a failed auto-memory scan retries the same conversation after a cooldown",
     querySelectorAll: (selector) => selector === "[data-message-author-role]" ? nodes : [],
     createElement: () => ({ setAttribute() {}, style: {}, remove() {} })
   };
-  const chrome = { runtime: {
+  const chrome = { runtime: { id: "test-extension",
     async sendMessage(message) {
       if (message.type === "AUTO_MEMORY_STATUS") return { enabled: true };
       if (message.type === "AUTO_MEMORY_CAPTURE") {
@@ -124,7 +124,7 @@ test("the save toast explains the memory and shows a draining Undo window", asyn
     body, documentElement: new Element("html"), createElement: (tag) => new Element(tag),
     addEventListener() {}, querySelectorAll: () => []
   };
-  const chrome = { runtime: {
+  const chrome = { runtime: { id: "test-extension",
     async sendMessage(message) { sent.push(message); return { ok: true }; },
     onMessage: { addListener() {} }
   } };
@@ -182,7 +182,7 @@ test("theme detection respects a dark color scheme and ignores transparent white
     document: { body, documentElement: root, querySelectorAll: () => [], addEventListener() {} },
     location: { hostname: "chatgpt.com" },
     getComputedStyle: (node) => ({ backgroundColor: node === body ? background : "rgb(255, 255, 255)", colorScheme: scheme }),
-    chrome: { runtime: { onMessage: { addListener() {} } } },
+    chrome: { runtime: { id: "test-extension", onMessage: { addListener() {} } } },
     MutationObserver: class { observe() {} }, Date, setTimeout() {}, clearTimeout() {}, setInterval() {},
     requestAnimationFrame() {}, addEventListener() {}
   });
