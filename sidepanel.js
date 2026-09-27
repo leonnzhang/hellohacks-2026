@@ -120,6 +120,16 @@ function switchMemoryTab(tab) {
   document.querySelector(".workspace main").scrollTop = 0;
 }
 
+function showApiKeySettings() {
+  switchView("memory");
+  switchMemoryTab("privacy");
+  requestAnimationFrame(() => {
+    const input = $("auto-memory-key");
+    input.focus({ preventScroll: true });
+    input.scrollIntoView({ block: "center", behavior: "instant" });
+  });
+}
+
 function renderOverview() {
   const memories = state.memories;
   const automatic = memories.filter((memory) => memory.origin === "automatic").length;
@@ -397,8 +407,7 @@ function updateSettingsDirty() {
 
 async function toggleMemorySaving() {
   if (!state.autoMemorySettings.apiKey) {
-    switchMemoryTab("privacy");
-    $("auto-memory-key").focus();
+    showApiKeySettings();
     status("Add your API key and enable automatic saving to get started.");
     return;
   }
@@ -773,9 +782,7 @@ async function copyPrompt(preparedPrompt = null) {
 
 async function openAndFill() {
   if (!state.autoMemorySettings.apiKey?.trim()) {
-    switchView("memory");
-    switchMemoryTab("privacy");
-    $("auto-memory-key").focus();
+    showApiKeySettings();
     status("Add and save your API key before transferring.");
     return;
   }
@@ -831,8 +838,7 @@ async function init() {
   refreshPrompt();
   switchView("memory");
   if (new URLSearchParams(window.location.search).get("setup") === "api-key") {
-    switchMemoryTab("privacy");
-    $("auto-memory-key").focus();
+    showApiKeySettings();
     status("Add your API key and save changes, then choose your transfer destination again.");
   } else switchMemoryTab("overview");
   syncChatTheme();

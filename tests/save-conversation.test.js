@@ -46,6 +46,21 @@ function panelHarness() {
   return { context, element, storage };
 }
 
+test("missing-key navigation focuses and scrolls to the key after opening Privacy", () => {
+  const { context, element } = panelHarness();
+  const actions = [];
+  context.switchView = (view) => actions.push(view);
+  context.switchMemoryTab = (tab) => actions.push(tab);
+  let frame;
+  context.requestAnimationFrame = (callback) => { frame = callback; };
+  element("auto-memory-key").focus = (options) => actions.push(options.preventScroll);
+  element("auto-memory-key").scrollIntoView = (options) => actions.push(options.block);
+  vm.runInContext("showApiKeySettings()", context);
+  assert.deepEqual(actions, ["memory", "privacy"]);
+  frame();
+  assert.deepEqual(actions, ["memory", "privacy", true, "center"]);
+});
+
 test("settings Save is enabled only for changed values and resets when reverted", () => {
   const { context, element } = panelHarness();
   const state = vm.runInContext("state", context);

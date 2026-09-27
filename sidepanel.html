@@ -126,17 +126,14 @@
           <label for="auto-memory-key">OpenAI API key</label>
           <input id="auto-memory-key" type="password" autocomplete="off" placeholder="Enter your API key">
           <p id="key-state" class="fineprint">No key saved.</p>
-          <label class="toggle-label"><input id="auto-memory-enabled" type="checkbox" aria-describedby="remember-description saving-key-hint" disabled> Remember automatically</label>
+          <div class="toggle-label"><input id="auto-memory-enabled" type="checkbox" aria-labelledby="remember-label" aria-describedby="remember-description saving-key-hint" disabled><span id="remember-label">Remember automatically</span></div>
           <p id="remember-description" class="fineprint">Save useful facts from your chats.</p>
           <p id="saving-key-hint" class="fineprint">Enter an API key above to enable automatic saving.</p>
           <p class="fineprint">When on, visible chats are sent to OpenAI to extract memories. When off, you can still add memories yourself.</p>
-          <details class="advanced-settings">
-            <summary>Advanced settings</summary>
-            <label class="toggle-label"><input id="rag-enabled" type="checkbox" aria-describedby="relevant-description saving-key-hint rag-status" disabled> Find relevant memories</label>
+            <div class="toggle-label"><input id="rag-enabled" type="checkbox" aria-labelledby="relevant-label" aria-describedby="relevant-description saving-key-hint rag-status" disabled><span id="relevant-label">Find relevant memories</span></div>
             <p id="relevant-description" class="fineprint">Use saved context that relates to your next message.</p>
             <p id="rag-status" class="fineprint">Off. Saved conversations and memories stay out of the search index.</p>
             <p class="fineprint">When on, saved text and search questions are sent to OpenAI for embeddings. The search index stays in this browser. Turning this off clears the index. API charges may apply.</p>
-          </details>
           <p id="auto-memory-error" class="save-state unsaved hidden" role="status"></p>
           <div class="action-row"><button id="save-auto-settings-btn" class="button primary" disabled>Save changes</button><button id="remove-auto-key-btn" class="button subtle">Disconnect key &amp; turn off</button></div>
           <p class="fineprint">Disconnecting turns off automatic saving and semantic search and clears the search index. Your saved memories remain.</p>

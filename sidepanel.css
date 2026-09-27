@@ -169,6 +169,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--ui-accent); box-
 .text-button { border: 0; background: none; color: var(--ui-accent); font-size: 11px; font-weight: 700; }
 .toggle-label { display: flex; align-items: flex-start; gap: 9px; margin: 15px 0 2px; font-size: 12px; line-height: 1.4; }
 .toggle-label input { flex: none; margin: 1px 0 0; accent-color: var(--ui-accent); }
+.toggle-label { background: transparent; border: 0; cursor: default; }
+.toggle-label input:enabled { cursor: pointer; }
+.toggle-label input:disabled { cursor: default; }
 .memory-list, .policy-list { display: grid; gap: 0; }
 .memory-item { min-width: 0; padding: 11px 0; border-bottom: 1px solid var(--ui-border); }
 .memory-item:last-child { border-bottom: 0; padding-bottom: 2px; }
