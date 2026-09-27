@@ -1,8 +1,8 @@
-# Relay Memory: product brief
+# Relay: product brief
 
 ## The idea
 
-People use several AI chat services. When a conversation must move to another service, they have to reconstruct its context by hand. They also repeat durable facts and preferences in every new chat. Relay Memory is a Chrome extension with two adjacent actions:
+People use several AI chat services. When a conversation must move to another service, they have to reconstruct its context by hand. They also repeat durable facts and preferences in every new chat. Relay is a Chrome extension with two adjacent actions:
 
 1. **Conversation handoff:** capture the visible conversation and carry its context into a different chat service.
 2. **Shared memory:** automatically save broadly useful core facts when enabled and include a few in each handoff.
@@ -13,7 +13,7 @@ The first action preserves the context of a particular conversation. The second 
 ## Core user journey
 
 1. Open a conversation on ChatGPT, Claude, or Gemini and click **Transfer** beside the composer.
-2. Choose ChatGPT, Claude, or Gemini as the destination. The extension captures visible messages and prepares the captured conversation for the destination tab; up to seven core memories can be selected separately.
+2. Choose ChatGPT, Claude, or Gemini as the destination. The extension captures visible messages and prepares the captured conversation for the destination tab; all eligible core memories can be selected separately.
 3. Write the next request in the destination chat. On send, review the exact combined message and choose whether to send with context, send without context, or cancel.
 4. Open **Memory Center** from the Transfer menu or toolbar icon to review, add, edit, and delete memories. Automatic memory and semantic search are opt-in and use a personal API key.
 

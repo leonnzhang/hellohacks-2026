@@ -1,12 +1,12 @@
-# Relay Memory privacy notice
+# Relay privacy notice
 
-Relay Memory is a Chrome extension for transferring chat context and keeping reusable memories. This notice describes the current code in this repository.
+Relay is a Chrome extension for transferring chat context and keeping reusable memories. This notice describes the current code in this repository.
 
 ## Data kept in Chrome
 
-The extension stores saved memories, saved conversations, settings, and a user-supplied OpenAI API key in `chrome.storage.local` in the current Chrome profile. When semantic search is enabled, searchable text and its vectors are stored in local IndexedDB. The extension has no Relay Memory account, sync service, or server database.
+The extension stores saved memories, saved conversations, settings, and a user-supplied OpenAI API key in `chrome.storage.local` in the current Chrome profile. When semantic search is enabled, searchable text and its vectors are stored in local IndexedDB. The extension has no Relay account, sync service, or server database.
 
-You can edit or delete memories and conversations in Memory Center and remove the API key there. Removing a memory from Relay Memory does not delete messages already sent to a chat service. Turning semantic search off clears its local index; removing the API key also turns search off.
+You can edit or delete memories and conversations in Memory Center and remove the API key there. Removing a memory from Relay does not delete messages already sent to a chat service. Turning semantic search off clears its local index; removing the API key also turns search off.
 
 ## When chat text leaves your browser
 

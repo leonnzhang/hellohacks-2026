@@ -1,4 +1,4 @@
-# Relay Memory
+# Relay
 
 A Chrome extension for carrying chats and relevant saved context between AI services. Conversations and memories stay in `chrome.storage.local`; the optional semantic search index stays in local IndexedDB. There is no backend, account, or remote database. Optional automatic memory and semantic search send content to the OpenAI API only when enabled.
 
@@ -16,12 +16,12 @@ A Chrome extension for carrying chats and relevant saved context between AI serv
 1. Open `chrome://extensions` in Chrome.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked** and select this directory.
-4. Pin **Relay Memory**. On a supported chat tab, click its icon to open Memory Center in the page.
+4. Pin **Relay**. On a supported chat tab, click its icon to open Memory Center in the page.
 
 ## Demo
 
 1. Open a ChatGPT, Claude, or Gemini conversation and click **Transfer** beside the composer.
-2. Choose a destination. The extension opens a blank chat. Write your next message there; when you send it, Relay shows the exact message with independently selected transfer context and up to seven core memories added. Choose **Send with context** to send it, **Send without context** to send your original message, or **Cancel**.
+2. Choose a destination. The extension opens a blank chat. Write your next message there; when you send it, Relay shows the exact message with independently selected transfer context and all eligible core memories added. Choose **Send with context** to send it, **Send without context** to send your original message, or **Cancel**.
 3. Open **Memory Center** from the Transfer menu or extension icon. Use the left sidebar to see an overview, manage saved memories, review memory rules, and read Privacy & data. You can also save selected text with the page's right-click menu.
 4. To enable automatic memory or semantic search, open **Privacy & data**, enter your own OpenAI API key, and enable the feature. Semantic search embeds saved conversations and eligible memories, then retrieves relevant context for a transfer or the first message in a new chat. Text and vectors stay in this browser; queries are sent to OpenAI for embeddings.
 

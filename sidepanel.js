@@ -14,7 +14,8 @@ const state = {
   selectedChatId: "",
   editingMemoryId: "",
   draftSource: "Manual",
-  draftUrl: ""
+  draftUrl: "",
+  matchedMemoryIds: new Set()
 };
 let statusTimer;
 
@@ -139,6 +140,113 @@ function renderOverview() {
     : "Add a memory to see your overview.";
 }
 
+function renderMemoryMap() {
+  const map = $("memory-map");
+  map.replaceChildren();
+  const ready = state.memories.filter((memory) => globalThis.RELAY_TRANSFER.isEligibleMemory(memory));
+  $("map-count").textContent = `${ready.length} ready`;
+  if (!ready.length) {
+    map.append(makeEmpty("No ready memories yet. Add one in Saved memories."));
+    $("map-detail").classList.add("hidden");
+    return;
+  }
+  const categories = [...globalThis.MEMORY_POLICY.categories.map((item) => ({ id: item.id, label: item.label })),
+    { id: "other", label: "Other memories" }];
+  const knownCategories = new Set(globalThis.MEMORY_POLICY.categories.map((item) => item.id));
+  for (const category of categories) {
+    const group = ready.filter((memory) =>
+      (knownCategories.has(memory.category) ? memory.category : "other") === category.id);
+    if (!group.length) continue;
+    const section = document.createElement("section");
+    section.className = "map-group";
+    const heading = document.createElement("h3");
+    heading.textContent = `${category.label} · ${group.length}`;
+    const items = document.createElement("div");
+    items.className = "map-items";
+    for (const memory of group) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "map-memory";
+      button.classList.toggle("matched", state.matchedMemoryIds.has(memory.id));
+      button.textContent = memory.text;
+      button.title = memory.text;
+      button.addEventListener("click", () => {
+        const detail = $("map-detail");
+        detail.replaceChildren();
+        const title = document.createElement("strong");
+        title.textContent = category.label;
+        const body = document.createElement("p");
+        body.textContent = memory.text;
+        detail.append(title, body);
+        if (memory.sourceTitle || memory.sourceQuote) {
+          const source = document.createElement("small");
+          source.textContent = memory.sourceQuote
+            ? `From ${memory.sourceTitle || "a chat"}: “${memory.sourceQuote}”`
+            : `From ${memory.sourceTitle}`;
+          detail.append(source);
+        }
+        detail.classList.remove("hidden");
+      });
+      items.append(button);
+    }
+    section.append(heading, items);
+    map.append(section);
+  }
+}
+
+function renderRetrievalHint() {
+  $("retrieval-hint").textContent = state.ragEnabled
+    ? state.ragChunks ? "Search uses your local index. The question is sent to OpenAI for embedding."
+      : "Semantic search is on; the local index is still being prepared."
+    : "Turn on semantic search in Privacy & data to try a question.";
+  $("retrieval-btn").disabled = !state.ragEnabled || !state.ragChunks;
+}
+
+function addRetrievalResult(parent, label, text) {
+  const item = document.createElement("div");
+  item.className = "retrieval-result";
+  const title = document.createElement("strong");
+  title.textContent = label;
+  const body = document.createElement("p");
+  body.textContent = text;
+  item.append(title, body);
+  parent.append(item);
+}
+
+async function previewRetrieval(event) {
+  event.preventDefault();
+  const query = $("retrieval-query").value.trim();
+  if (!query || !state.ragEnabled || !state.ragChunks) return;
+  const button = $("retrieval-btn");
+  const results = $("retrieval-results");
+  button.disabled = true;
+  results.replaceChildren(makeEmpty("Searching saved context…"));
+  try {
+    const retrieved = await chrome.runtime.sendMessage({ type: "RAG_RETRIEVE", query });
+    if (retrieved?.ragError) throw new Error(retrieved.ragError);
+    const memories = retrieved?.memories || [];
+    const excerpts = retrieved?.relatedConversations || [];
+    state.matchedMemoryIds = new Set(memories.map((item) => item.id));
+    renderMemoryMap();
+    results.replaceChildren();
+    if (!memories.length && !excerpts.length) {
+      results.append(makeEmpty("No relevant saved context found for this question."));
+      return;
+    }
+    const summary = document.createElement("p");
+    summary.className = "fineprint";
+    summary.textContent = `${memories.length} ${memories.length === 1 ? "memory" : "memories"} and ${excerpts.length} saved chat ${excerpts.length === 1 ? "excerpt" : "excerpts"} would be included.`;
+    results.append(summary);
+    memories.forEach((item, index) => addRetrievalResult(results, `Memory ${index + 1}`, item.text));
+    excerpts.forEach((item, index) => addRetrievalResult(results,
+      `Saved chat ${index + 1}${item.title ? ` · ${item.title}` : ""}`, item.text));
+  } catch (error) {
+    results.replaceChildren(makeEmpty(`Search unavailable: ${error.message || "Please try again."}`));
+  } finally {
+    renderRetrievalHint();
+  }
+}
+
 async function syncChatTheme() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -199,6 +307,8 @@ function renderMemories() {
   list.replaceChildren();
   $("memory-count").textContent = String(state.memories.length);
   renderOverview();
+  renderMemoryMap();
+  renderRetrievalHint();
   if (!state.memories.length) {
     list.append(makeEmpty("No memories yet. Add one below."));
     return;
@@ -253,6 +363,8 @@ function renderMemories() {
 function renderAutoSettings() {
   $("auto-memory-enabled").checked = !!state.autoMemorySettings.enabled;
   $("auto-memory-status").textContent = state.autoMemorySettings.enabled ? "On" : "Off";
+  $("auto-memory-key").placeholder = state.autoMemorySettings.apiKey ? "•".repeat(40) : "Enter your API key";
+  $("auto-memory-key").classList.toggle("has-saved-key", !!state.autoMemorySettings.apiKey);
   $("key-state").textContent = state.autoMemorySettings.apiKey ? "Key saved." : "No key saved.";
   $("auto-memory-error").textContent = state.autoMemoryLastError ? `Last scan failed: ${state.autoMemoryLastError}` : "";
   $("auto-memory-error").classList.toggle("hidden", !state.autoMemoryLastError);
@@ -277,6 +389,7 @@ async function refreshRagStatus() {
     state.ragChunks = result?.chunks || 0;
     state.ragLastError = result?.error || "";
     renderRagSettings();
+    renderRetrievalHint();
     refreshPrompt();
   } catch { /* The extension worker may be restarting. */ }
 }
@@ -659,7 +772,7 @@ async function init() {
   chrome.tabs.onActivated.addListener(syncChatTheme);
   for (const button of document.querySelectorAll("[data-memory-tab]"))
     button.addEventListener("click", () => switchMemoryTab(button.dataset.memoryTab));
-  $("view-memories-btn").addEventListener("click", () => switchMemoryTab("saved"));
+  $("retrieval-form").addEventListener("submit", previewRetrieval);
   $("close-btn").addEventListener("click", () => {
     if (window.parent !== window) window.parent.postMessage({ type: "RELAY_CLOSE_MEMORY_CENTER" }, "*");
     else window.close();
@@ -704,6 +817,7 @@ async function init() {
     if (changes.ragEnabled) {
       state.ragEnabled = !!changes.ragEnabled.newValue;
       renderRagSettings();
+      renderRetrievalHint();
       refreshPrompt();
     }
     if (changes.ragLastError) {

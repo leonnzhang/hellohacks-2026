@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Relay Memory",
+  "name": "Relay",
   "version": "0.8.0",
   "minimum_chrome_version": "116",
   "description": "Carry conversations and your saved memories between AI chats.",

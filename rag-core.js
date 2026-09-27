@@ -201,7 +201,7 @@ globalThis.RELAY_RAG = (() => {
     const excerpts = [];
     for (const item of sorted) {
       if (item.kind === "memory") {
-        if (seenMemories.has(item.parentId) || memories.length >= (options.maxMemories ?? 3)) continue;
+        if (seenMemories.has(item.parentId)) continue;
         seenMemories.add(item.parentId);
         memories.push({ ...item.metadata, score: item.score });
       } else if (item.kind === "chat") {
@@ -210,7 +210,6 @@ globalThis.RELAY_RAG = (() => {
         chatChunkCounts.set(item.parentId, count + 1);
         excerpts.push({ text: item.content, ...item.metadata, score: item.score });
       }
-      if (memories.length >= (options.maxMemories ?? 3) && excerpts.length >= (options.maxExcerpts ?? 4)) break;
     }
     return { memories, excerpts, indexedCount: all.length };
   }

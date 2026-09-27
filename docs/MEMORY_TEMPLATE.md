@@ -1,6 +1,6 @@
 # Core memory template
 
-Relay Memory has **one memory shelf**: short facts about the user that are likely to help across unrelated chats. The extension stores one fact per record, not a running summary or a copy of the whole conversation. The machine-readable rules are in [`memory-policy.js`](../memory-policy.js).
+Relay has **one memory shelf**: short facts about the user that are likely to help across unrelated chats. The extension stores one fact per record, not a running summary or a copy of the whole conversation. The machine-readable rules are in [`memory-policy.js`](../memory-policy.js).
 
 Automatic memory is opt-in. For each changed conversation, the model may return up to three facts from these seven categories:
 
@@ -32,4 +32,4 @@ Older records created before this core-only template stay in local storage. Reco
 
 ## Handoff rule
 
-A send can include up to seven core records, selected separately from transfer context. With semantic search off, selection uses recency. When semantic search is enabled, relevant records can be retrieved from the local index for review. If an older fact matters more, the user can edit the saved memories. Conflicting facts are not automatically reconciled; the model is asked to skip conflicts and the user can correct an existing record.
+A send can include all eligible core records, selected separately from transfer context. With semantic search off, selection uses recency. When semantic search is enabled, relevant records can be retrieved from the local index for review. If an older fact matters more, the user can edit the saved memories. Conflicting facts are not automatically reconciled; the model is asked to skip conflicts and the user can correct an existing record.

@@ -24,12 +24,12 @@ test("core memories and transfer context can be selected independently", () => {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "transfer-core.js"), "utf8"), context);
   const core = context.RELAY_TRANSFER;
   const memories = Array.from({ length: 9 }, (_, index) => ({ text: `Memory ${index}`, scope: "global", origin: "manual" }));
-  assert.equal(core.pickMemories(memories).length, 7);
+  assert.equal(core.pickMemories(memories).length, 9);
   const selected = core.pickMemories(memories);
   const memoryOnly = core.buildSendPrompt({ memories: selected }, "Next request");
   assert.match(memoryOnly, /Relay core memories/);
   assert.doesNotMatch(memoryOnly, /Relay transfer context/);
-  assert.doesNotMatch(memoryOnly, /Memory 7/);
+  assert.match(memoryOnly, /Memory 7/);
   assert.equal(core.stripAugmentedPrompt(memoryOnly), "Next request");
   const transferOnly = core.buildSendPrompt({ transfer: "Earlier conversation" }, "Next request");
   assert.match(transferOnly, /Relay transfer context/);

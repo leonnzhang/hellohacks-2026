@@ -17,7 +17,7 @@ globalThis.RELAY_TRANSFER = (() => {
   }
 
   function pickMemories(memories, policy = globalThis.MEMORY_POLICY) {
-    return memories.filter((memory) => isEligibleMemory(memory, policy)).slice(0, 7);
+    return memories.filter((memory) => isEligibleMemory(memory, policy));
   }
 
   function formatTranscript(messages) {

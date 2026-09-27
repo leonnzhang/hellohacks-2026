@@ -123,7 +123,7 @@
       try {
         const result = await chrome.runtime.sendMessage({ type: "RAG_RETRIEVE", query: original });
         if (result?.ragUsed) {
-          reviewMemories = Array.isArray(result.memories) ? result.memories.slice(0, 7) : memories;
+          reviewMemories = Array.isArray(result.memories) ? result.memories : memories;
           relatedConversations = Array.isArray(result.relatedConversations) ? result.relatedConversations : [];
         }
         ragError = result?.ragError || "";
