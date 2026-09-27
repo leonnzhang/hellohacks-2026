@@ -13,7 +13,19 @@
     "https://gemini.google.com/*"
   ],
   "background": { "service_worker": "background.js" },
-  "action": { "default_title": "Open Memory Center" },
+  "icons": {
+    "16": "assets/icons/relay-16.png",
+    "32": "assets/icons/relay-32.png",
+    "48": "assets/icons/relay-48.png",
+    "128": "assets/icons/relay-128.png"
+  },
+  "action": {
+    "default_title": "Open Memory Center",
+    "default_icon": {
+      "16": "assets/icons/relay-16.png",
+      "32": "assets/icons/relay-32.png"
+    }
+  },
   "web_accessible_resources": [{
     "resources": ["sidepanel.html", "sidepanel.css", "sidepanel.js", "theme-init.js", "memory-policy.js", "transfer-core.js", "rag-core.js", "prompts/handoff.json"],
     "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*", "https://claude.ai/*", "https://gemini.google.com/*"]
