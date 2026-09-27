@@ -4,13 +4,16 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function harness({ existing = false, pending = null, sendSucceeds = false, initial = "What should I do next?" } = {}) {
+function harness({ existing = false, pending = null, sendSucceeds = false, noSendButton = false, editDuringClaim = false, initial = "What should I do next?" } = {}) {
   const listeners = {};
   let dialogs = 0;
   let clicks = 0;
   let prevented = 0;
   let completed = 0;
   let sent = false;
+  const claims = new Set();
+  const notices = [];
+  let sentText = "";
   let indicatorVisible = false;
   class Element {}
   class HTMLFormElement extends Element {
@@ -36,14 +39,14 @@ function harness({ existing = false, pending = null, sendSucceeds = false, initi
     getClientRects() { return [1]; }
     getAttribute(name) { return name === "aria-label" ? "Send" : ""; }
     closest() { return this; }
-    click() { clicks++; if (sendSucceeds) { sent = true; input.value = ""; } }
+    click() { clicks++; sentText = input.value; if (sendSucceeds) { sent = true; input.value = ""; } }
   }();
   const document = {
     body: { append(node) { if (node.id === "relay-pending-transfer") indicatorVisible = true; } },
     addEventListener(name, callback) { listeners[name] = callback; },
     querySelectorAll(selector) {
       if (selector === "#prompt-textarea") return [input];
-      if (selector === "button") return [button];
+      if (selector === "button") return noSendButton ? [] : [button];
       if ((existing || sent) && selector === "[data-message-author-role]") return [{ textContent: "Earlier message" }];
       return [];
     },
@@ -60,6 +63,12 @@ function harness({ existing = false, pending = null, sendSucceeds = false, initi
     runtime: { async sendMessage(message) {
       if (message.type === "GET_CORE_MEMORIES") return [{ id: "m1", text: "I prefer concise answers.", scope: "global", origin: "manual" }];
       if (message.type === "GET_PENDING_TRANSFER") return pending;
+      if (message.type === "CLAIM_TRANSFER_SEND") {
+        if (claims.has(message.id)) return { ok: false };
+        claims.add(message.id);
+        if (editDuringClaim) input.value += " My own request.";
+        return { ok: true };
+      }
       if (message.type === "RAG_STATUS") return { enabled: false };
       if (message.type === "RAG_RETRIEVE") return { ragUsed: false };
       if (message.type === "COMPLETE_PENDING_TRANSFER") { completed++; return { ok: true }; }
@@ -70,7 +79,7 @@ function harness({ existing = false, pending = null, sendSucceeds = false, initi
   const context = vm.createContext({ document, chrome, location: { hostname: "chatgpt.com", href: "https://chatgpt.com/" },
     Element, HTMLFormElement, HTMLTextAreaElement, HTMLInputElement,
     Event: class {}, setTimeout(callback, delay) { if (delay <= 500) queueMicrotask(callback); },
-    window: {} });
+    window: {}, RELAY_UI: { notice(message) { notices.push(message); }, mountNotice() { indicatorVisible = true; } } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "memory-policy.js"), "utf8"), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "transfer-core.js"), "utf8"), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "transfer-context.js"), "utf8"), context);
@@ -79,7 +88,7 @@ function harness({ existing = false, pending = null, sendSucceeds = false, initi
     preventDefault() { prevented++; }, stopImmediatePropagation() {} });
   return { input, send, settle, getClicks: () => clicks, getPrevented: () => prevented,
     getDialogs: () => dialogs, getCompleted: () => completed,
-    getIndicator: () => indicatorVisible };
+    getIndicator: () => indicatorVisible, getSentText: () => sentText, getClaims: () => claims.size };
 }
 
 test("Send adds pending context and replays without a review popup", async () => {
@@ -162,4 +171,64 @@ test("later messages send normally without interception", async () => {
   app.send();
   assert.equal(app.getPrevented(), 0);
   assert.equal(app.getDialogs(), 0);
+});
+
+
+const autoTransfer = (extra = {}) => ({ id: "auto-1", prompt: "Earlier conversation", autoContinue: true,
+  continuationRequest: "Briefly acknowledge the context and invite my next message.", ...extra });
+
+test("automatic continuation inserts context and memories, sends once, and confirms completion", async () => {
+  const app = harness({ pending: autoTransfer(), initial: "", sendSucceeds: true });
+  await app.settle();
+  assert.equal(app.getClicks(), 1);
+  assert.equal(app.getClaims(), 1);
+  assert.equal(app.getCompleted(), 1);
+  assert.match(app.getSentText(), /Earlier conversation/);
+  assert.match(app.getSentText(), /I prefer concise answers/);
+  assert.match(app.getSentText(), /CURRENT REQUEST\nBriefly acknowledge/);
+  assert.equal(app.getIndicator(), false);
+});
+
+test("unavailable Send leaves a complete continuation draft for manual sending", async () => {
+  const app = harness({ pending: autoTransfer(), initial: "", noSendButton: true });
+  await app.settle();
+  assert.equal(app.getClicks(), 0);
+  assert.equal(app.getCompleted(), 0);
+  assert.equal(app.getClaims(), 1);
+  assert.match(app.input.value, /CURRENT REQUEST\nBriefly acknowledge/);
+  assert.equal(app.getIndicator(), true);
+});
+
+test("an ignored automatic click is not retried and leaves the draft available", async () => {
+  const app = harness({ pending: autoTransfer(), initial: "" });
+  await app.settle();
+  assert.equal(app.getClicks(), 1);
+  assert.equal(app.getCompleted(), 0);
+  assert.match(app.input.value, /Earlier conversation/);
+  assert.equal(app.getIndicator(), true);
+});
+
+test("reload after an automatic attempt does not send again", async () => {
+  const app = harness({ pending: autoTransfer({ autoAttempted: true }), initial: "" });
+  await app.settle();
+  assert.equal(app.getClicks(), 0);
+  assert.equal(app.getClaims(), 0);
+  assert.match(app.input.value, /CURRENT REQUEST\nBriefly acknowledge/);
+});
+
+test("automatic continuation preserves existing drafts and existing conversations", async () => {
+  for (const options of [{ initial: "My unsent draft" }, { existing: true, initial: "" }]) {
+    const app = harness({ pending: autoTransfer(), ...options });
+    await app.settle();
+    assert.equal(app.getClicks(), 0);
+    assert.equal(app.getClaims(), 0);
+    assert.equal(app.input.value, options.initial);
+  }
+});
+
+test("a user edit during the automatic claim prevents sending", async () => {
+  const app = harness({ pending: autoTransfer(), initial: "", editDuringClaim: true });
+  await app.settle();
+  assert.equal(app.getClicks(), 0);
+  assert.match(app.input.value, /My own request/);
 });

@@ -313,7 +313,11 @@ async function processInlineTransfer(payload, sender) {
   const tab = await chrome.tabs.create({ active: false });
   try {
     await chrome.storage.session.set({ [`pendingTransfer:${tab.id}`]: {
-      id: crypto.randomUUID(), prompt, origin: new URL(url).origin, createdAt: Date.now()
+      id: crypto.randomUUID(), prompt, autoContinue: true,
+      continuationRequest: messages.at(-1).role === "user"
+        ? "Continue this conversation by answering the final user message in PREVIOUS CONVERSATION. Use the earlier messages as context."
+        : "Continue this conversation here. Briefly acknowledge that you have the context and invite my next message. Do not repeat the previous answer or invent a new request.",
+      origin: new URL(url).origin, createdAt: Date.now()
     } });
     await chrome.tabs.update(tab.id, { url, active: true });
   } catch (error) {
@@ -339,7 +343,24 @@ async function pendingTransfer(sender) {
     return null;
   }
   if (new URL(sender.tab.url).origin !== entry.origin) return null;
-  return { id: entry.id, prompt: entry.prompt };
+  return { id: entry.id, prompt: entry.prompt, autoContinue: !!entry.autoContinue,
+    continuationRequest: entry.continuationRequest || "", autoAttempted: !!entry.autoAttempted };
+}
+
+// Serialize claims so concurrent refreshes cannot send the same transfer twice.
+let transferClaimQueue = Promise.resolve();
+function claimTransferSend(id, sender) {
+  const claim = transferClaimQueue.then(async () => {
+    const entry = await pendingTransfer(sender);
+    if (!entry || entry.id !== id || !entry.autoContinue || entry.autoAttempted) return { ok: false };
+    const key = `pendingTransfer:${sender.tab.id}`;
+    const stored = (await chrome.storage.session.get(key))[key];
+    if (!stored || stored.id !== id) return { ok: false };
+    await chrome.storage.session.set({ [key]: { ...stored, autoAttempted: true } });
+    return { ok: true };
+  });
+  transferClaimQueue = claim.catch(() => {});
+  return claim;
 }
 
 async function completePendingTransfer(id, sender) {
@@ -421,6 +442,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message?.type === "GET_PENDING_TRANSFER") {
     pendingTransfer(sender).then(sendResponse).catch(() => sendResponse(null));
+    return true;
+  }
+  if (message?.type === "CLAIM_TRANSFER_SEND") {
+    claimTransferSend(message.id, sender).then(sendResponse).catch(() => sendResponse({ ok: false }));
     return true;
   }
   if (message?.type === "COMPLETE_PENDING_TRANSFER") {

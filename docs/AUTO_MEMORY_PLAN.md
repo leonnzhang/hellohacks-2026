@@ -1,34 +1,49 @@
-# Automatic memory plan
+# Automatic memory: current behavior
 
-## Goal
+Despite the historical filename, this describes the implemented feature. The canonical category definitions live in [`memory-policy.js`](../memory-policy.js); examples are in [Memory template](MEMORY_TEMPLATE.md).
 
-When a user opts in, inspect newly visited ChatGPT, Claude, and Gemini conversations and save durable facts automatically. Transfer context appears in a destination draft immediately; core memories are checked when the user clicks Send. Keep editing and deletion in the Memory tab, with the exact user quote available for audit.
+## Enable it
 
-The seven core categories, examples, exclusions, storage fields, and handoff rules are documented in [MEMORY_TEMPLATE.md](MEMORY_TEMPLATE.md). The application reads the canonical definitions from [`memory-policy.js`](../memory-policy.js).
+Open Memory Center on a supported chat, then **Privacy & data → OpenAI connection → Save key**. Turn on **Automatic memory → Save useful facts from chats**. Saving the key alone does not enable extraction. Context search is an independent switch using the same key.
 
-## Flow
+## When scans run
 
-1. The content script waits for a supported chat page to settle, then sends its visible role-labelled messages to the extension service worker. It never uses the broad page-text fallback for automatic extraction.
-2. The worker ignores an unchanged conversation snapshot. With the toggle enabled and an API key configured, it sends the snapshot to a small OpenAI model once. The request asks for at most three atomic core facts from the fixed category template, each grounded in an exact user-message quote. Assistant messages are context, not evidence.
-3. The worker validates the core category, checks each quote against a user message, applies deterministic exclusions, removes duplicates, and saves qualifying facts directly in local memory with source URL, quote, and timestamp.
-4. The Memory tab shows the category policy and each auto-saved fact with its category explanation and source quote. The user can edit or delete facts. Older pending suggestions from the previous version remain visible there until resolved.
-5. Clicking Send on a new chat checks core memories against the request. With semantic search off, the current fallback includes all eligible core memories. Older noncore and unscoped records, plus automatic memories in retired categories, are excluded until the user edits and saves them as core. Automatic saves appear in a small on-page notification with a 10-second Undo action.
+- Content scripts observe supported chat pages and schedule a scan after roughly five seconds of quiet. Continuous DOM changes bound the scheduling delay to 20 seconds; a periodic check also runs every 30 seconds when no scan timer is pending.
+- Capture must contain both user and assistant messages with identifiable roles. Broad page-text fallback is rejected. This is a DOM-settling heuristic, not an exact assistant-generation completion signal.
+- The worker verifies opt-in, key, and source origin. It strips Relay-augmented user messages to their current request, caps each message at 12,000 characters, and retains recent complete messages up to 50,000 characters.
+- Successful/unchanged snapshots are skipped. Changed conversations can generate later requests; this is not a once-per-conversation feature or a bulk scan of saved chats.
+- One scan per source URL runs at a time. Busy scans are rescheduled after 15 seconds. A failed same-snapshot scan has a 60-second retry cooldown and is eligible for a later scheduled check.
 
-## Data and privacy
+API latency is additional. These numbers are scheduling behavior, not a guaranteed notification time.
 
-- The feature is off by default. The toggle explains that chat text goes to OpenAI when enabled. Existing saved chats are not scanned in bulk. The template permits minimal, enduring allergy or accessibility needs, so the settings text also discloses that these may be saved and included in handoffs.
-- The API key is supplied by the user and stored in `chrome.storage.local`, restricted to trusted extension contexts. This is suitable for a personal prototype. A public release needs a small server proxy, user accounts, spend limits, and a more thorough privacy review; a shared key must not be bundled in the extension.
-- The request uses `store: false`. Provider abuse-monitoring retention still applies under its terms. The extension stores memories and snapshot fingerprints locally, not a second copy of each automatically read transcript.
-- Turning the toggle off stops future requests. Removing the key prevents further processing. Already saved memories remain until deleted.
+## Extraction and saving
 
-## Limits and follow-up
+The worker calls OpenAI’s Responses API using the configured `gpt-6-luna` model and `store: false`. It requests at most three atomic, durable facts from the seven categories, with exact quotes from user messages. Assistant messages provide context, not evidence.
 
-- Only messages currently rendered in newly visited supported tabs can be read. Service page changes may break capture, and older unloaded turns are unavailable.
-- A settled page can change again later, so a conversation may incur another request after new messages arrive. Fingerprints prevent repeat calls for the same snapshot.
-- Model output can be wrong even with source checks. The Memory tab exposes provenance and deletion, and the handoff context has a read-only preview. Evaluate quality with harmless example conversations, including jokes, corrections, temporary facts, and sensitive details.
-- Facts tied to one task are intentionally excluded from core memory. The extension does not try to infer that they apply everywhere.
+Validation checks category, user quote, deterministic exclusions, and normalized duplicates against saved memories and older suggestions. Serialized writes recheck storage to avoid duplicate concurrent additions. Deletion epochs prevent an in-flight extraction started before a deletion from restoring that source’s removed memory.
+
+Qualifying records are saved directly in `chrome.storage.local`, with source URL/title/quote, category, timestamp, and global scope. The explanation shown to the user is the category’s fixed reason, not a model-generated explanation of its decision. Older pending suggestions remain reviewable only when such records exist.
+
+## Notification and Undo
+
+A successful new save produces an upper-right notification containing the fact, source quote, reason, and **10-second Undo** countdown. The bar drains right to left.
+
+**The write has already succeeded when the notification appears.** Expiration does not commit a delayed save. Undo removes only the new automatic records from that save/source; it does not undo other memories or messages sent to providers. The worker permits a short timing allowance for the Undo request. After the UI window expires, use Saved memories to delete or edit the record.
+
+A repeated supported preferred-name statement may show “already saved.” Other duplicates and one-time requests may produce no new notification. API failures produce a brief notice, with details available in Privacy & data. Silent no-op cases do not prove that extraction is broken.
+
+## Controls and data flow
+
+Turning Automatic memory off stops future scans from being authorized; it does not remove saved records. Removing the key disables both API features and clears the search index through the search-disable path. Existing requests may already be in flight when settings change; do not promise retroactive cancellation.
+
+The key and saved records stay in the current Chrome profile; visible chat text is sent to OpenAI when extraction is enabled. Relay does not automatically archive the full scanned transcript locally. The automatic policy permits minimal enduring allergies/accessibility needs. Never bundle a shared key. See [Privacy](PRIVACY.md).
+
+## Limits
+
+Unloaded history is unavailable. DOM changes can break capture. Source quotes establish textual grounding, not truth or permanence. Jokes, corrections, conflicting facts, and temporary instructions need evaluation; conflicts are not automatically reconciled. Manual entry is separate and does not enforce the automatic allowlist.
+
+Before transfer or first-send memory inclusion, only eligible core records are considered. Search off/unavailable/empty falls back to all eligible records; enabled search can select a subset or no matches. Choosing a transfer destination now starts automatic continuation—there is no required extra request before using saved memory.
 
 ## Verification
 
-- Unit test extraction validation, duplicate handling, opt-in gating, snapshot fingerprints, and local memory picking with a mocked API.
-- Reload the unpacked extension and test opt-in, automatic saving, handoff selection, editing, deletion, and disabling on each supported service with harmless chats.
+The Node suite covers opt-in gating, grounding/category checks, duplicate handling, snapshot reuse, retry cooldown, deletion/Undo, notification content/countdown, and stripping transferred context from extraction input. Prior live ChatGPT checks confirmed saving, timed Undo, duplicate-name behavior, and skipping a one-time request. Rehearse with synthetic data on each intended service; model behavior and site timing are not deterministic. See [Demo cases 4 and 7](DEMO_GUIDE.md#case-4--automatic-memory-reason-and-undo).

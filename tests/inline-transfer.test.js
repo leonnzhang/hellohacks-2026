@@ -62,6 +62,8 @@ test("inline transfer arms context before loading the destination chat", async (
   assert.equal(result.destination, "Claude");
   assert.equal(openedUrl, "https://claude.ai/new");
   const armed = session["pendingTransfer:8"];
+  assert.equal(armed.autoContinue, true);
+  assert.match(armed.continuationRequest, /Briefly acknowledge/);
   assert.doesNotMatch(armed.prompt, /I have a peanut allergy/);
   assert.doesNotMatch(armed.prompt, /I enjoy hiking/);
   assert.doesNotMatch(armed.prompt, /learning Rust/);
@@ -72,6 +74,12 @@ test("inline transfer arms context before loading the destination chat", async (
   const destinationSender = { tab: { id: 8, url: "https://claude.ai/new" } };
   assert.equal((await vm.runInContext("pendingTransfer", context)(destinationSender)).id, "transfer-1");
   assert.equal(await vm.runInContext("pendingTransfer", context)({ tab: { id: 8, url: "https://chatgpt.com/" } }), null);
+  const claim = vm.runInContext("claimTransferSend", context);
+  assert.equal((await claim("wrong-id", destinationSender)).ok, false);
+  const claims = await Promise.all([claim("transfer-1", destinationSender), claim("transfer-1", destinationSender)]);
+  assert.equal(claims.filter((result) => result.ok).length, 1);
+  assert.equal((await vm.runInContext("pendingTransfer", context)(destinationSender)).autoAttempted, true);
+  assert.equal((await claim("transfer-1", destinationSender)).ok, false);
   assert.equal((await vm.runInContext("completePendingTransfer", context)("transfer-1", destinationSender)).ok, true);
   assert.equal(await vm.runInContext("pendingTransfer", context)(destinationSender), null);
 
@@ -80,8 +88,10 @@ test("inline transfer arms context before loading the destination chat", async (
   assert.equal(openedUrl, "https://chatgpt.com/");
   assert.match(session["pendingTransfer:8"].prompt, /USER:\nHelp me plan the next step/);
 
+  capture.messages.pop();
   const gemini = await transfer({ destination: "Gemini", capture }, sender);
   assert.equal(gemini.ok, true);
   assert.equal(openedUrl, "https://gemini.google.com/app");
   assert.equal(session["pendingTransfer:8"].origin, "https://gemini.google.com");
+  assert.match(session["pendingTransfer:8"].continuationRequest, /answering the final user message/);
 });

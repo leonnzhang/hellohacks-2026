@@ -1,47 +1,58 @@
 # Relay
 
-A Chrome extension for carrying chats and relevant saved context between AI services. Conversations and memories stay in `chrome.storage.local`; the optional semantic search index stays in local IndexedDB. There is no backend, account, or remote database. Optional automatic memory and semantic search send content to the OpenAI API only when enabled.
+Carry a conversation between ChatGPT, Claude, and Gemini, and keep useful personal context across chats. Relay is a Chrome Manifest V3 extension with no build step, Relay account, backend, or cross-device sync.
 
-## Project docs
+**Choose a service → bring the conversation → continue automatically.** No extra prompt is required.
 
-- [Core ideas](docs/CORE_IDEAS.md): the intended split between immediate transfer drafts and core memories checked on Send.
-- [Product brief](docs/PRODUCT_BRIEF.md): objectives, user journeys, scope, and demo success criteria.
-- [Demo guide](docs/DEMO_GUIDE.md): full setup, synthetic seed memories, sample retrieval questions, and a repeatable walkthrough.
-- [Developer handoff](docs/DEVELOPER_HANDOFF.md): architecture, data flow, verification status, and next steps.
-- [Automatic memory plan](docs/AUTO_MEMORY_PLAN.md): opt-in flow, privacy choices, limits, and verification.
-- [Core memory template](docs/MEMORY_TEMPLATE.md): the seven allowed categories, examples, exclusions, storage, and handoff rules.
-- [UI direction](docs/UI_DIRECTION.md): the chat-native transfer button, quick flow, and shared styling with Memory Center.
-- [Privacy notice](docs/PRIVACY.md): what stays in Chrome and when chat text is sent to another service.
+## Features
 
-## Install locally
+- **One-click continuation:** a compact, non-scrolling Transfer selector beside the composer opens a fresh destination chat, inserts the conversation, and sends a continuation request automatically. Same-service transfers work too.
+- **Useful continuation:** answer the last user message if it is unanswered; otherwise briefly acknowledge the imported context and invite the next message.
+- **Recoverable sending:** automatic sending is attempted once. A failed attempt leaves a prepared draft for manual Send. Existing drafts and user edits are preserved.
+- **Memory Center:** Overview, Saved memories, Memory rules, and Privacy & data in a centered overlay. Open it from Transfer or the pinned extension icon on a supported chat.
+- **Manual memory:** add, edit, delete, or save selected text from the right-click menu.
+- **Optional automatic memory:** save durable user facts with a source quote and category explanation. A notification offers a 10-second Undo window.
+- **Optional context search:** find relevant saved context through local vector search. Preview matches with **Overview → Try a question**.
+- **Consistent appearance:** light/dark styling follows the chat, with shared colors and an upper-right notification stack.
 
-1. Open `chrome://extensions` in Chrome.
-2. Enable **Developer mode**.
-3. Choose **Load unpacked** and select this directory.
-4. Pin **Relay**. On a supported chat tab, click its icon to open Memory Center in the page.
+See the [feature guide](docs/FEATURES.md) for controls, requirements, edge cases, and limitations.
 
-## Demo
+## Install and try
 
-For a complete rehearsal, including a clean-profile setup, copy-ready synthetic memories, and suggested narration, see the [demo guide](docs/DEMO_GUIDE.md).
+1. Open `chrome://extensions` in Chrome 116 or newer; enable **Developer mode**.
+2. Choose **Load unpacked** and select this repository directory. Pin **Relay**.
+3. Open a supported chat and start a short conversation.
+4. Click **Transfer**, then a service under **Continue conversation in…**. Selecting it sends the captured context to that service automatically.
+5. Open **Memory Center → Saved memories** to add a reusable preference.
 
-1. Open a ChatGPT, Claude, or Gemini conversation and click **Transfer** beside the composer.
-2. Choose a destination. Relay opens a new chat and immediately inserts the captured conversation into its composer. Review or edit it, then add your request after `CURRENT REQUEST`.
-3. Click **Send**. Relay checks core memories against your request at that moment and adds eligible context to the outgoing message.
-4. Open **Memory Center** from the Transfer menu or extension icon. Use the left sidebar to see an overview, manage saved memories, review memory rules, and read Privacy & data. You can also save selected text with the page's right-click menu.
-5. To enable automatic memory or semantic search, open **Privacy & data**, save your own OpenAI API key under **OpenAI connection**, and turn on **Automatic memory** or **Context search**. Each switch saves immediately. Semantic search embeds saved conversations and eligible memories, then retrieves relevant context when you send. Text and vectors stay in this browser; queries are sent to OpenAI for embeddings.
+Transfer and manual memory work without an OpenAI API key. Chat services retain their own login and access requirements.
 
-For an auto-save demo, state a lasting fact or preference in a supported chat, wait for the assistant's reply, then watch for the on-page saved-memory notification. Relay checks later turns in the same conversation too. One-time requests and facts already saved may produce no new memory.
+For automatic memory or context search, open **Privacy & data → OpenAI connection**, enter your own key, and click **Save key**. Enable **Automatic memory** and/or **Context search** separately. Switches save immediately; saving a key does not enable either feature. API charges may apply.
 
-The **Memory Center** link and toolbar icon open the same centered overlay on supported chat tabs. Transfer stays beside the chat composer.
+After changing extension code, reload Relay in `chrome://extensions`, then reload existing chat tabs.
 
-## Design notes
+## Data and limits
 
-- The extension reads messages currently present in the page DOM. Some services may unload older messages from long chats, so review captured text before handoff.
-- Capture can inject its reader into a chat tab that was open before you loaded the extension. If site-specific message selectors fail, it saves visible text from the page's main area for you to review.
-- Site layouts change. Capture and composer selectors live in `content.js` and can be updated independently of the saved data.
-- The handoff prompt includes up to 20,000 characters of transcript, retaining the beginning and end when a chat is longer. The full edited transcript remains saved locally.
-- Pending transfer context is kept for one tab in `chrome.storage.session` for up to 30 minutes. It appears in the destination composer immediately and is removed after the first successful send or when the tab closes. Core memories are checked on Send. The combined message appears in the destination chat history.
-- The reusable handoff wording lives in `prompts/handoff.json`. It is sent as a user prompt; this extension has no model system prompt. Technique templates are not part of the current codebase.
-- `chrome.storage.local` belongs to the current Chrome profile; it does not sync saved context to other devices.
-- Automatic memory is off by default. When it saves a fact, a small notification shows the fact, its source quote, and why it may help later. A bar drains from right to left during the 10-second Undo window. The extension reads only messages currently rendered on newly visited supported chats and sends those messages to OpenAI after the chat settles. It makes another request if that conversation changes later. The user-supplied key is stored locally; do not bundle a shared key in this extension.
-- Semantic search is off by default. When enabled, saved conversation and eligible memory text is sent to OpenAI to create embeddings; the index and searchable text remain in local IndexedDB. Disabling search clears the index.
+Memories, settings, and any legacy saved conversations live in this Chrome profile’s `chrome.storage.local`. The optional search index lives in IndexedDB. Automatic memory sends visible chat text to OpenAI for extraction; context search sends saved text and queries for embeddings. Selecting a transfer destination sends captured conversation context and selected memories to that chat service. See [Privacy](docs/PRIVACY.md).
+
+Relay transfers context as one message, not native historical chat turns. It reads messages present in the page DOM; unloaded history is unavailable. Inline transfer caps each message at 12,000 characters and bounds the assembled transcript to 20,000 characters, retaining its beginning and end plus an omission marker. It does not save a full local conversation archive during transfer.
+
+With context search off, unavailable, or empty, sending falls back to all eligible core memories. A successful search can return no matches. The current automatic continuation uses its generated continuation request as the search query, which can be less specific than a user-written question.
+
+## Documentation
+
+| Guide | Contents |
+| --- | --- |
+| [Features](docs/FEATURES.md) | Full current app walkthrough and troubleshooting |
+| [Demo guide](docs/DEMO_GUIDE.md) | Setup, synthetic data, demo cases, expected results, rehearsal checklist |
+| [Product brief](docs/PRODUCT_BRIEF.md) | Product purpose, scope, and acceptance criteria |
+| [Core ideas](docs/CORE_IDEAS.md) | Transfer and memory interaction contract |
+| [Developer handoff](docs/DEVELOPER_HANDOFF.md) | Architecture, storage, tests, and known gaps |
+| [Automatic memory](docs/AUTO_MEMORY_PLAN.md) | Current extraction timing, validation, Undo, and retry behavior |
+| [Memory template](docs/MEMORY_TEMPLATE.md) | Seven automatic-memory categories and eligibility rules |
+| [UI direction](docs/UI_DIRECTION.md) | Styling and notification behavior |
+| [Privacy](docs/PRIVACY.md) | Storage and external data flows |
+
+## Verification
+
+Run `node --test tests/*.test.js` with Node.js. The current suite has 40 passing tests. Live synthetic continuation has been verified into ChatGPT and Gemini; the new automatic-send flow still needs a live Claude check. See the [developer handoff](docs/DEVELOPER_HANDOFF.md#verification) for the scope of that evidence.

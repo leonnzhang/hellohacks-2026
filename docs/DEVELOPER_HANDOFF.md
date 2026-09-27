@@ -1,68 +1,90 @@
-# Relay: developer handoff
+# Relay developer handoff
 
-## Current state
+## Run locally
 
-This is an unpacked Chrome Manifest V3 extension with no build step. Load the repository directory at `chrome://extensions` using **Developer mode → Load unpacked**. Reload the extension after code changes, then reload already-open chat tabs before retesting site integration.
+Unpacked Chrome Manifest V3 extension, minimum Chrome 116, no build step. Load the repository at `chrome://extensions`. Reload the extension after changes, then reload existing chat pages. Do not confuse an older injected content script with the current files.
 
-The main product requirements are in [PRODUCT_BRIEF.md](PRODUCT_BRIEF.md), and the transfer versus memory timing contract is in [CORE_IDEAS.md](CORE_IDEAS.md). Keep saved conversations and memories in `chrome.storage.local`; keep semantic search data in local IndexedDB. Do not add a backend or remote database.
+[Features](FEATURES.md) describes visible UI; [Core ideas](CORE_IDEAS.md) is the interaction contract; [Demo guide](DEMO_GUIDE.md) has rehearsal cases. There is no backend or Relay account.
 
 ## File map
 
 | File | Responsibility |
 | --- | --- |
-| `manifest.json` | MV3 permissions, supported hosts, service worker, toolbar action, content script. |
-| `background.js`, `memory-policy.js` | Saves selected text, calls OpenAI for opt-in automatic memory, and defines the allowed categories. |
-| `content.js` | Reads visible chat messages, places the chat-native transfer control, and samples theme values. |
-| `transfer-context.js` | Inserts transfer context into the destination composer immediately; checks memories and completes the transfer on Send. |
-| `transfer-core.js` | Core memory selection and handoff prompt construction for the inline flow. |
-| `rag-core.js` | Chunks saved context, stores embeddings in local IndexedDB, and performs cosine-similarity retrieval. |
-| `sidepanel.html`, `sidepanel.css` | Memory Center split view, sidebar, chart, and privacy controls. |
-| `sidepanel.js` | UI state, storage, prompt assembly, tab messaging, and destination flow. |
-| `prompts/handoff.json` | Wording for the generated **user** prompt. It is not a model system prompt. |
-| `tests/save-conversation.test.js` | Mocked Chrome-storage tests for creating and updating a conversation. |
+| `manifest.json` | Hosts, permissions, content-script order, toolbar action, service worker |
+| `background.js` | Transfer tab creation/session lifecycle, one-time send claims, extraction, memory writes, search coordination, toolbar/right-click actions |
+| `content.js` | Service-specific capture, composer-anchored Transfer menu, Memory Center iframe, theme detection, notification stack, auto-memory scheduling/Undo |
+| `transfer-context.js` | Destination composer insertion, automatic continuation, first-send interception, retrieval, send verification and fallback |
+| `transfer-core.js` | Eligibility, transcript formatting, bounded context and outgoing prompt assembly/parsing |
+| `memory-policy.js` | Seven automatic categories, reasons, exclusions, extraction instructions |
+| `rag-core.js` | Chunking, OpenAI embeddings, local IndexedDB synchronization, cosine ranking |
+| `sidepanel.html`, `sidepanel.css`, `sidepanel.js`, `theme-init.js` | Memory Center UI and state; legacy hidden Handoff editor |
+| `prompts/handoff.json` | Handoff wording sent as a user message, not a system prompt |
+| `tests/*.test.js` | Node tests using mocked Chrome APIs/DOM and deterministic fixtures |
 
-## Data and flow
+## Storage
 
-Relevant `chrome.storage.local` records and settings include:
+| Location | Records |
+| --- | --- |
+| `chrome.storage.local` | `memories`, legacy `chats` and `memorySuggestions`; `autoMemorySettings: { enabled, apiKey }`; `autoMemoryProcessed`, `memoryDeletionEpoch`, `autoMemoryLastError`; `ragEnabled`, `ragLastError`, `ragChunkCount` |
+| `chrome.storage.session` | `pendingTransfer:<tabId>` containing ID, prompt, continuation request, origin, creation time, `autoContinue`, `autoAttempted` |
+| IndexedDB `relay-memory-rag` | Searchable text chunks, vectors, source metadata/hashes |
 
-```js
-chats: [{ id, title, service, sourceUrl, transcript, createdAt, updatedAt? }]
-memories: [{ id, text, scope?, category?, origin?, sourceUrl, sourceQuote?, sourceTitle?, createdAt, updatedAt?, project? /* older records only */ }]
-memorySuggestions: [{ id, text, quote, sourceUrl, sourceTitle, createdAt }]
-autoMemorySettings: { enabled, apiKey }
-autoMemoryProcessed: { [sourceUrl]: snapshotHash }
-autoMemoryLastError: string
-ragEnabled: boolean
-ragLastError: string
-ragChunkCount: number
+Memory records include ID/text, scope, origin, optional category, source URL/title/quote, and timestamps. Automatic records use `scope: "global"` and `origin: "automatic"`. Manual editing converts old/noncore records to manual core memory. Session entries expire after 30 minutes and are removed when the destination tab closes. Local storage access is restricted to trusted extension contexts.
+
+## Transfer lifecycle
+
+1. `content.js` captures role-labelled visible messages. Inline transfer rejects broad page-text capture.
+2. `INLINE_TRANSFER` validates source/destination and caps individual message text at 12,000 characters. `transfer-core.js` bounds the transcript to 20,000 characters plus an omission marker, retaining head and tail.
+3. The worker chooses the continuation request from the final message role: answer the final user message, or acknowledge an already answered conversation.
+4. Create an inactive tab, write its pending entry, then navigate/activate it. Storing before navigation avoids a first-load race.
+5. `transfer-context.js` loads pending context and core memories, inserts a complete draft into a suitable composer, and preserves unrelated drafts. It skips automatic preparation in an existing conversation.
+6. `CLAIM_TRANSFER_SEND` serializes claims and persists `autoAttempted` before an automatic attempt. Refresh/reload cannot acquire another automatic claim.
+7. Retrieve context, assemble the outgoing message, verify inserted content and absence of user edits, then use the site’s enabled Send button. Automatic sending waits briefly for the button to become available.
+8. Clear pending context only after the composer clears and a message or navigation is observed. Otherwise retain the draft and manual-send guidance. Later messages in an established conversation pass through normally.
+
+The extension sends one context message, not native history. A claim means “automatic attempt reserved,” not “delivered.” Do not add blind automatic retries after clicking Send. Existing pending entries without `autoContinue` retain the older manual flow for compatibility.
+
+Manual click/Enter interception still supports first-send memory context. `replaying` prevents the synthetic Send click from recursively intercepting itself. Snapshot checks prevent sending a message changed while retrieval was running.
+
+## Memory and search
+
+Manual entry and selected-text saving need no API. Automatic extraction needs an explicitly enabled switch and saved key. Current extraction model: `gpt-6-luna`; embeddings: `text-embedding-3-small`. These are code configuration values, not promises about future model availability.
+
+Automatic scans use role-labelled messages, normalized snapshots and duplicate validation. User text from Relay-augmented messages is stripped back to the current request so transferred history is not mined again as new user evidence. Successful saves include source provenance and trigger a 10-second Undo notice. See [Automatic memory](AUTO_MEMORY_PLAN.md) for timing and limits.
+
+Search indexes eligible memories and existing saved conversations. Text/vectors remain in IndexedDB, but text and queries are sent to OpenAI for embeddings. Local changes queue synchronization; disabling search clears the index. A successful retrieval may return no matches. Disabled, empty, or failed search falls back to all eligible core memories.
+
+Automatic continuation currently queries retrieval with its generated continuation request. Improving relevance with a source-specific query is a known opportunity; do not describe current transfer retrieval as transcript-aware semantic matching.
+
+## Current versus legacy UI
+
+The visible product has Transfer plus four Memory Center sections. The Handoff view is hidden in `sidepanel.html`; its conversation capture/save/update/delete, preview, copy, and Open & fill handlers remain in code and have some tests. Existing `chats` records remain searchable, but inline transfer does not write a full transcript archive. Do not document hidden controls as available navigation.
+
+## Verification
+
+Run:
+
+```sh
+node --test tests/*.test.js
+node --check background.js
+node --check content.js
+node --check transfer-context.js
+node --check sidepanel.js
+git diff --check
 ```
 
-When semantic search is enabled, eligible saved memories and saved conversation transcripts are chunked and embedded with OpenAI `text-embedding-3-small`. Text, vectors, and source metadata are stored in the `relay-memory-rag` IndexedDB database. The index is synchronized when chats or memories change and cleared when search is turned off.
+Current suite: **40 passing tests**. Coverage includes prompt boundaries, eligibility, storage CRUD, opt-in settings, auto-memory validation/retry/Undo, transfer arming, serialized send claims, successful automatic sends, missing/ignored Send, refresh without resend, existing drafts/conversations, user edits during a claim, manual Send interception, and later-message pass-through.
 
-`sidepanel.js` sends `CAPTURE` to the active supported tab. `content.js` extracts role/text pairs using service-specific DOM selectors, then falls back to visible page text when needed. The inline Transfer menu formats detected messages for a pending destination transfer. The older panel capture flow remains in code but its Handoff view is hidden for the demo. **Save conversation** creates a new entry; choosing an existing entry changes the action to **Update conversation**. Save writes to `chats`, reads it back, and checks the saved ID and transcript before reporting success.
+Live evidence: synthetic ChatGPT → ChatGPT and ChatGPT → Gemini automatic continuation both sent and received brief acknowledgments. Earlier checks covered ChatGPT memory extraction/Undo, deduplication, manual CRUD, retrieval, light/dark mode, notification dismissal, and narrow navigation. Automated fixtures do not prove current provider DOM compatibility.
 
-Memories can be entered in Memory Center or by right-click selection on a supported page. With opt-in enabled, the content script sends a settled, visible conversation to the service worker. The worker asks OpenAI for facts in the fixed [core memory template](MEMORY_TEMPLATE.md), validates each category and user-message quote, and saves qualifying facts directly. The user can see the category reason and quote, then edit or delete the fact. Earlier pending suggestions from version 0.2 remain reviewable. Core memories are not inserted when Transfer opens a destination; they are checked when the user clicks Send. With semantic search off, the current fallback includes all eligible core memories. Older noncore or unscoped records and automatic records in retired categories remain visible but excluded until the user edits and saves one as core.
+Remaining live checks: new automatic-send flow in Claude; Claude/Gemini source capture; all source/destination pairs; unanswered/streaming source cases; long/virtualized transcripts; blocked/auth-gated destinations; contenteditable manual fallback and reload timing. The hidden legacy editor has automated coverage, not a current full UI rehearsal.
 
-The legacy Handoff panel remains hidden in the current UI. Its read-only preview is assembled from `prompts/handoff.json`, automatically picked memories, retrieved saved excerpts, and the current transcript. A transcript over 20,000 characters is shortened by retaining its beginning and end. The active inline Transfer flow opens a new destination tab, stores pending context, and inserts an editable transfer draft into the composer before Send. When semantic search is on, the Send click can retrieve relevant saved context for the outgoing message.
+## Maintenance priorities
 
-The [chat-native UI](UI_DIRECTION.md) adds a small Transfer button beside a detected composer. Its menu asks the service worker to assemble context and open a destination chat. The service worker stores that context under the destination tab ID in `chrome.storage.session` before navigation, restricted to the matching origin and 30 minutes. `transfer-context.js` inserts the transfer draft immediately. On Send, it reads the new request, retrieves relevant saved context when enabled, adds core memories, verifies composer insertion, and replays the site's Send action. The pending transfer is cleared only after the send visibly succeeds. The Memory Center link and toolbar icon open the same centered overlay on supported chat tabs.
+- Keep user-visible copy aligned with automatic destination sending and one-time fallback behavior.
+- Maintain source selectors in `content.js` and composer/send selectors in `transfer-context.js` as provider pages change.
+- Test real editor acceptance: an attempted click or inserted DOM text alone is not send confirmation.
+- Improve continuation retrieval specificity and assess streaming/incomplete assistant captures.
+- Test storage/quota errors and large histories. There is no export/backup UI.
 
-## Permissions and privacy
-
-The extension uses `storage`, `tabs`, `contextMenus`, and `scripting`, with host access for ChatGPT, Claude, Gemini, and the OpenAI API listed in `manifest.json`. The service worker sets local-storage access to trusted extension contexts. Saved conversations and memories stay in the current Chrome profile; there is no sync. Automatic memory sends visible chat messages to OpenAI for extraction when enabled. Semantic search sends saved text and retrieval queries to OpenAI for embeddings when enabled; its index stays in local IndexedDB. Handoff content reaches a destination chat service when the user sends their first message there. The user-facing data flow is summarized in [PRIVACY.md](PRIVACY.md).
-
-## Verification status
-
-- `node --test tests/*.test.js` passes mocked save and automatic extraction cases.
-- A live ChatGPT to Claude send confirmed that context reached Claude. It also exposed interface text in the ChatGPT transcript fallback; the fallback now targets role headings instead of broad page text. These checks do not cover every page layout or long conversation.
-- The latest saved-conversation dropdown UX has automated coverage but should be checked again in a reloaded extension.
-- Gemini first-send insertion, Claude and Gemini source capture, and end-to-end persistence across panel reopen still need live verification with harmless sample conversations.
-
-## Next checks and likely maintenance
-
-1. Run the [product demo](PRODUCT_BRIEF.md#demo-script) in a freshly reloaded extension. Confirm that a newly saved chat appears in the dropdown and survives panel reopen.
-2. Exercise capture and first sends on all three services. Verify that transfer context appears in the destination composer before Send, no request placeholder is present, memories appear only after clicking Send, and the sent history contains the expected context. Check both click and Enter. Site DOM changes will most likely require updates in `content.js` or `transfer-context.js`.
-3. Test long and partially loaded chats. If capture includes unrelated interface text or misses old turns, improve service selectors and verify the resulting message.
-4. Check storage errors and large transcripts in Chrome. The current save flow reports a failed read-back; the app does not provide export or backup.
-
-Use harmless sample content during verification. Do not put real secrets or private conversations into test fixtures or demo data.
+Use synthetic data; never commit keys or personal conversation fixtures. See [Privacy](PRIVACY.md) for current external data flows.

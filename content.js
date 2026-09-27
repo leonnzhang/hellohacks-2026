@@ -280,27 +280,25 @@
       const shadow = transferHost.attachShadow({ mode: "open" });
       shadow.innerHTML = `<style>
         :host{all:initial;color:var(--rt-text);font-family:var(--rt-font);font-size:13px}
-        *{box-sizing:border-box}button{font:inherit;cursor:pointer}button:disabled{cursor:wait;opacity:.55}button:focus-visible{outline:2px solid var(--rt-accent);outline-offset:2px}
+        *{box-sizing:border-box}button{font:inherit;cursor:pointer}button:disabled{cursor:not-allowed;opacity:.6}button:focus-visible{outline:2px solid var(--rt-accent);outline-offset:2px}
         .launcher{display:inline-flex;align-items:center;gap:8px;min-height:37px;padding:5px 11px 5px 5px;border:1px solid var(--rt-border);border-radius:10px;background:var(--rt-surface);color:var(--rt-text);box-shadow:0 1px 2px #00000012;white-space:nowrap;transition:background .15s,border-color .15s}
         .launcher:hover,.launcher[aria-expanded="true"]{border-color:var(--rt-accent);background:color-mix(in srgb,var(--rt-accent) 7%,var(--rt-surface))}
         .mark{display:grid;place-items:center;width:26px;height:26px;flex:none;border-radius:8px;background:color-mix(in srgb,var(--rt-accent) 17%,var(--rt-surface));color:var(--rt-accent);font-size:17px;font-weight:700;line-height:1}
         .label{font-size:12px;font-weight:700;letter-spacing:-.01em}.chevron{margin-left:1px;color:var(--rt-muted);font-size:13px}
-        .menu{position:absolute;right:0;bottom:calc(100% + 9px);width:min(322px,calc(100vw - 20px));max-height:min(440px,calc(100vh - 24px));overflow:auto;padding:14px;border:1px solid var(--rt-border);border-radius:max(16px,var(--rt-radius));background:var(--rt-surface);color:var(--rt-text);box-shadow:0 16px 42px #0000002e}
+        .menu{position:absolute;right:0;bottom:calc(100% + 9px);width:min(260px,calc(100vw - 20px));padding:6px;border:1px solid var(--rt-border);border-radius:14px;background:var(--rt-surface);color:var(--rt-text);box-shadow:0 12px 32px #00000026}
         .menu.below{top:calc(100% + 9px);bottom:auto}.menu[hidden],.copy[hidden]{display:none}
-        .eyebrow{margin:0 0 3px;color:var(--rt-muted);font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
-        .head{padding:2px 2px 11px}.head strong{display:block;font-size:15px;letter-spacing:-.02em}.head small{display:block;margin-top:4px;color:var(--rt-muted);font-size:11px;line-height:1.35}
-        .destinations{display:grid;gap:4px;padding:8px 0;border-top:1px solid var(--rt-border)}
-        .destination{display:flex;align-items:center;gap:11px;width:100%;padding:10px 9px;border:0;border-radius:11px;background:transparent;color:var(--rt-text);text-align:left;transition:background .15s}
-        .destination:hover,.destination:focus-visible{background:color-mix(in srgb,var(--rt-accent) 10%,var(--rt-surface))}
-        .destination-copy{min-width:0;flex:1}.destination strong{display:block;font-size:12px}.destination small{display:block;margin-top:3px;color:var(--rt-muted);font-size:10px;line-height:1.3}
-        .avatar{display:grid;place-items:center;width:30px;height:30px;flex:none;border-radius:10px;font-size:12px;font-weight:750}
-        .service-chatgpt{background:#dcefe7;color:#136449}.service-claude{background:#f5e2d7;color:#9c4a2d}.service-gemini{background:#e5ebff;color:#315fbe}
-        .arrow{color:var(--rt-muted);font-size:16px}.foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 2px 1px;border-top:1px solid var(--rt-border);color:var(--rt-muted);font-size:10px}
-        .foot button,.copy{padding:0;border:0;background:none;color:var(--rt-accent);font-size:11px;font-weight:700;white-space:nowrap}.foot button:hover,.copy:hover{text-decoration:underline}
-        .status{margin:9px 2px 0;color:var(--rt-muted);font-size:11px;line-height:1.45}.status:empty{display:none}.copy{margin:8px 2px 0}
+        .head{padding:8px 10px;color:var(--rt-muted);font-size:11px;font-weight:600}
+        .destinations{display:grid;gap:2px}
+        .destination{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:7px 10px;border:0;border-radius:9px;background:transparent;color:var(--rt-text);text-align:left}
+        .destination:hover:not(:disabled),.destination:focus-visible,.foot button:hover,.copy:hover{background:color-mix(in srgb,var(--rt-accent) 8%,var(--rt-surface))}
+        .destination-copy{min-width:0;flex:1}.destination strong{font-size:13px;font-weight:600}
+        .avatar{display:grid;place-items:center;width:28px;height:28px;flex:none;border-radius:8px;background:color-mix(in srgb,var(--rt-accent) 11%,var(--rt-surface));color:var(--rt-accent);font-size:12px;font-weight:700}
+        .arrow{color:var(--rt-muted);font-size:14px}.foot{margin-top:6px;padding-top:6px;border-top:1px solid var(--rt-border)}
+        .foot button,.copy{width:100%;min-height:34px;padding:7px 10px;border:0;border-radius:8px;background:transparent;color:var(--rt-muted);font-size:12px;text-align:left}
+        .status{margin:6px 10px;color:var(--rt-muted);font-size:12px;line-height:1.4;overflow-wrap:anywhere}.status:empty{display:none}.copy{color:var(--rt-accent)}
       </style>
       <button type="button" class="launcher" aria-haspopup="dialog" aria-expanded="false" aria-label="Transfer this chat"><span class="mark" aria-hidden="true">↗</span><span class="label">Transfer</span><span class="chevron" aria-hidden="true">⌄</span></button>
-      <section class="menu" role="dialog" aria-label="Transfer chat" hidden><div class="head"><p class="eyebrow">Chat transfer</p><strong>Continue this conversation</strong><small>Open a new chat with this conversation ready as context.</small></div><div class="destinations"></div><div class="foot"><span class="context-count">Checking context…</span><button type="button" class="memory-center">Memory Center →</button></div><p class="status" role="status" aria-live="polite"></p><button type="button" class="copy" hidden>Copy prepared prompt</button></section>`;
+      <section class="menu" role="dialog" aria-label="Transfer chat" hidden><div class="head">Continue conversation in…</div><div class="destinations"></div><div class="foot"><button type="button" class="memory-center">Memory Center →</button></div><p class="status" role="status" aria-live="polite"></p><button type="button" class="copy" hidden>Copy prepared prompt</button></section>`;
       transferButton = shadow.querySelector(".launcher");
       transferPanel = shadow.querySelector(".menu");
       const list = shadow.querySelector(".destinations");
@@ -315,9 +313,7 @@
         copy.className = "destination-copy";
         const name = document.createElement("strong");
         name.textContent = destination;
-        const description = document.createElement("small");
-        description.textContent = destination === service ? "Start a fresh chat" : `Continue in ${destination}`;
-        copy.append(name, description);
+        copy.append(name);
         const arrow = document.createElement("span");
         arrow.className = "arrow";
         arrow.setAttribute("aria-hidden", "true");
@@ -326,21 +322,18 @@
         row.addEventListener("click", () => startInlineTransfer(destination));
         list.append(row);
       }
-      transferButton.addEventListener("click", async () => {
+      transferButton.addEventListener("click", () => {
         transferPanel.hidden = !transferPanel.hidden;
         transferButton.setAttribute("aria-expanded", String(!transferPanel.hidden));
         if (!transferPanel.hidden) {
           shadow.querySelector(".status").textContent = "";
           shadow.querySelector(".copy").hidden = true;
           const result = capture();
-          const messageCount = result.messages.filter((item) => ["user", "assistant"].includes(item.role)).length;
           const canTransfer = result.captureMethod !== "page text" && result.messages.some((item) => item.role === "user");
           shadow.querySelectorAll(".destination").forEach((row) => { row.disabled = !canTransfer; });
-          if (!canTransfer) shadow.querySelector(".status").textContent = "Start a conversation first. Then choose where to continue it.";
-          try {
-            const { count = 0, ragEnabled = false } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
-            shadow.querySelector(".context-count").textContent = `${messageCount} messages · ${count} ${count === 1 ? "memory" : "memories"} checked on Send${ragEnabled ? " · search on" : ""}`;
-          } catch { shadow.querySelector(".context-count").textContent = `${messageCount} messages`; }
+          if (!canTransfer) shadow.querySelector(".status").textContent = "Start a conversation to transfer it.";
+          scheduleTransferControl();
+
         }
       });
       shadow.addEventListener("keydown", (event) => {
@@ -377,8 +370,11 @@
     }
     if (notificationHost) updateNoticeTheme(theme.dark);
     for (const [name, value] of Object.entries({
-      "--rt-surface": theme.surface, "--rt-text": theme.text, "--rt-muted": theme.muted,
-      "--rt-border": theme.border, "--rt-accent": theme.accent,
+      "--rt-bg": theme.dark ? "#202126" : "#f6f6f8",
+      "--rt-surface": theme.dark ? "#2b2c32" : "#ffffff",
+      "--rt-text": theme.dark ? "#f4f4f6" : "#202127",
+      "--rt-muted": theme.dark ? "#b6b7c0" : "#646772",
+      "--rt-border": theme.dark ? "#3c3d45" : "#e6e7eb", "--rt-accent": theme.accent,
       "--rt-font": "Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
       "--rt-radius": theme.radius, "--rt-accent-text": theme.dark ? "#17202a" : "#ffffff"
     })) transferHost.style.setProperty(name, value);
@@ -395,7 +391,13 @@
     const spaceBelow = innerHeight - buttonTop - 55;
     const below = spaceBelow > spaceAbove;
     transferPanel.classList.toggle("below", below);
-    transferPanel.style.maxHeight = `${Math.max(120, (below ? spaceBelow : spaceAbove) - 8)}px`;
+    // Keep the short selector intact, shifting it inside the viewport when needed.
+    transferPanel.style.transform = "";
+    if (!transferPanel.hidden) {
+      const menuRect = transferPanel.getBoundingClientRect();
+      const shift = menuRect.top < 8 ? 8 - menuRect.top : Math.min(0, innerHeight - 8 - menuRect.bottom);
+      if (shift) transferPanel.style.transform = `translateY(${shift}px)`;
+    }
   }
 
   function scheduleTransferControl() {
@@ -424,11 +426,15 @@
     }
     rows.forEach((row) => { row.disabled = true; });
     copy.hidden = true;
-    status.textContent = `Opening ${destination}…`;
+    status.textContent = `Continuing in ${destination}…`;
     try {
       const reply = await chrome.runtime.sendMessage({ type: "INLINE_TRANSFER", destination, capture: result });
-      status.textContent = reply?.ok ? `Opening ${destination}. Your context will appear in its composer; add a request before sending.` :
+      status.textContent = reply?.ok ? `Continuing in ${destination}…` :
         (reply?.message || "Transfer failed.");
+      if (reply?.ok) {
+        transferPanel.hidden = true;
+        transferButton.setAttribute("aria-expanded", "false");
+      }
       if (reply?.prompt) {
         copy.dataset.prompt = reply.prompt;
         copy.hidden = false;

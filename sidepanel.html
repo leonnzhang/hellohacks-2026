@@ -44,10 +44,10 @@
           <option value="Claude">Claude</option>
           <option value="Gemini">Gemini</option>
         </select>
-        <p id="auto-memory-summary" class="fineprint">Core memories are checked when you click Send.</p>
+        <p id="auto-memory-summary" class="fineprint">Core memories are checked before sending.</p>
         <details id="preview-details"><summary>Preview context</summary><textarea id="prompt-preview" rows="10" readonly aria-label="Context prompt preview"></textarea></details>
         <div class="action-row"><button id="copy-btn" class="button subtle">Copy prompt</button><button id="continue-btn" class="button primary">Open &amp; fill</button></div>
-        <p class="fineprint">Send the context in the new chat, then write your next message there.</p>
+        <p class="fineprint">Choose a destination to bring the context and continue automatically.</p>
       </section>
     </section>
 
@@ -82,7 +82,7 @@
           <div class="chart-row"><span>Earlier entries</span><div class="chart-track"><div id="older-bar" class="chart-fill tertiary"></div></div><strong id="older-count">0</strong></div>
           <p id="chart-caption" class="fineprint">Based on memories stored in this browser.</p>
         </section>
-        <section class="overview-note"><span class="note-icon" aria-hidden="true">↗</span><p>Transfer context appears in the new composer. Relay checks core memories when you click Send.</p></section>
+        <section class="overview-note"><span class="note-icon" aria-hidden="true">↗</span><p>Choose a destination to continue automatically with your conversation and relevant core memories.</p></section>
       </section>
 
       <section id="saved-panel" class="memory-panel hidden">
@@ -140,7 +140,7 @@
         <section class="card privacy-list">
           <div class="privacy-row"><span class="privacy-icon" aria-hidden="true">⌂</span><div><h2>Saved in this browser</h2><p>Memories and your API key stay in this Chrome profile. There is no Relay account or server database.</p></div></div>
           <div class="privacy-row"><span class="privacy-icon" aria-hidden="true">✦</span><div><h2>Automatic saving is optional</h2><p>When enabled, visible chats from ChatGPT, Claude, and Gemini are sent to OpenAI to find lasting facts. These may include allergies or accessibility needs you mention.</p></div></div>
-          <div class="privacy-row"><span class="privacy-icon" aria-hidden="true">↗</span><div><h2>You control sending</h2><p>Transfer context appears in the destination composer for review. Relevant core memories are added when you click Send; nothing reaches the chat service until you send.</p></div></div>
+          <div class="privacy-row"><span class="privacy-icon" aria-hidden="true">↗</span><div><h2>Choose where to continue</h2><p>Choosing a transfer destination automatically sends your conversation and selected core memories to that service. If sending fails, the prepared draft stays available for you to send manually.</p></div></div>
         </section>
       </section>
     </section>

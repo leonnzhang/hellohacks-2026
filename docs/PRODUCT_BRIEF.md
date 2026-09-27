@@ -1,42 +1,40 @@
-# Relay: product brief
+# Relay product brief
 
-## The idea
+## Purpose
 
-People use several AI chat services. When a conversation must move to another service, they have to reconstruct its context by hand. They also repeat durable facts and preferences in every new chat. Relay is a Chrome extension with two adjacent actions:
+People move between AI chat services and repeatedly explain the same context. Relay brings an active conversation to another service and keeps a small reusable memory shelf in the current browser profile.
 
-1. **Conversation handoff:** capture the visible conversation and carry its context into a different chat service.
-2. **Shared memory:** automatically save broadly useful core facts when enabled and check them when the user clicks Send.
-3. **Semantic search:** optionally find relevant excerpts from saved conversations and memories, using a local vector index.
+There are three capabilities:
 
-The first action preserves the context of a particular conversation and makes it visible in the destination composer immediately. The second preserves facts that remain useful after that conversation ends and is evaluated when the user sends. [Core ideas](CORE_IDEAS.md) is the interaction contract.
+1. **Conversation continuation:** choose a destination; Relay transfers context and automatically starts the new chat.
+2. **Shared memory:** manually save useful facts or opt into extraction with source evidence and Undo.
+3. **Context search:** optionally retrieve relevant saved context using local vectors and OpenAI embeddings.
 
-## Core user journey
+## Primary journey
 
-1. Open a conversation on ChatGPT, Claude, or Gemini and click **Transfer** beside the composer.
-2. Choose ChatGPT, Claude, or Gemini as the destination. Relay captures visible messages and inserts the transfer context into the new chat composer immediately, ending with a blank `CURRENT REQUEST` section.
-3. Review or edit the transfer draft and write the next request. Clicking Send checks eligible core memories against that request, adds the selected memories, and sends the combined message.
-4. Open **Memory Center** from the Transfer menu or toolbar icon to review, add, edit, and delete memories. Automatic memory and semantic search are opt-in and use a personal API key.
+Open Transfer beside a supported chat composer and choose **Continue conversation in… → ChatGPT / Claude / Gemini**. Relay opens a fresh chat, inserts context and selected memory, and attempts Send once. An unanswered final user message gets a continuation request for an answer; an answered conversation gets a brief acknowledgment request. No new user prompt is required. If sending fails, retain a complete draft for manual Send.
 
-The extension does not reconstruct the destination service's native message history. The first message includes an explicit context section that appears in the destination chat history.
+Memory Center provides Overview, Saved memories, Memory rules, and Privacy & data. A saved OpenAI key and separate switches enable automatic memory and context search. Transfer and manual memory need no OpenAI key.
 
-## Hackathon success criteria
+## Acceptance criteria
 
-- The inline Transfer menu captures visible chat messages and inserts an editable draft into the destination composer before Send.
-- A memory can be saved automatically or manually, edited, deleted, picked for a handoff, and reused with a different conversation.
-- Memory Center shows saved facts and source quotes, plus manual and automatic memory controls.
-- A handoff makes transfer context visible before Send; core memories are considered only when Send is clicked.
-- Saved data persists in the same Chrome profile without a backend, remote database, or account. Automatic extraction uses the user-supplied OpenAI API key when enabled.
-- Semantic search keeps searchable text and vectors in local IndexedDB; it sends saved text and each query to OpenAI only when enabled.
-- The user can inspect the content before it is sent to an AI service.
+- The destination selector is compact and does not scroll.
+- Selecting a service clearly starts automatic continuation, including fresh chats on the same service.
+- Only structured conversation messages are transferred; no broad page-text fallback is silently sent.
+- An automatic attempt is claimed once per transfer; reloads do not cause automatic retries.
+- Existing drafts and user edits are preserved. Pending context clears only after send confirmation.
+- Automatic memory shows its fact, source quote, reason, and a 10-second Undo window after saving.
+- Manual memory supports add, edit/cancel, delete, and selected-text saving.
+- Retrieval previews explain which saved context matches a question without sending a chat message.
+- Both API features start disabled; saving a key alone does not enable them.
+- User-facing privacy text explains automatic destination sending and OpenAI data flows.
 
-## Scope and boundaries
+## Scope
 
-**In scope now:** inline capture, immediate transfer draft insertion, opt-in automatic memory from newly visited chats, manual memory management, memory selection on Send, opt-in local semantic search, and prompt assembly for the three services.
+Implemented: three-service DOM capture and composer integration; automatic continuation; first-send memory inclusion; centered Memory Center; manual and automatic memory; local semantic index; shared notifications and light/dark styling.
 
-**Outside the current build:** native chat-history import, cross-device sync, and server storage. Running out of tokens is a motivating use case, but the extension does not detect token limits or switch services automatically.
+Not implemented: native historical-message import, token-limit detection, automatic provider switching, attachments migration, cross-device sync, Relay accounts, a backend, bulk export/backup, or a visible saved-conversation archive editor. The legacy Handoff editor remains hidden in code.
 
-The capture reads messages currently present in the page. Long chats may have unloaded earlier messages; users should review the outgoing message. Prompt assembly limits the included transcript to 20,000 characters and keeps the beginning and end.
+A transfer contains only rendered messages and is length-bounded. It is not a lossless archive. Search-disabled/error fallback includes all eligible memories; automatic continuation’s generic retrieval query is a known relevance limitation.
 
-## Demo script
-
-Use a short harmless conversation with a core preference such as “Please keep answers concise.” Open Memory Center from the inline Transfer menu and inspect the saved preference and its source quote. Choose another service from Transfer and show that the conversation appears in the new composer before sending. Type a request after `CURRENT REQUEST`, then send and show that memory was added at that click. Demonstrate the auto-saved memory notification and Undo action.
+See [Features](FEATURES.md) for the complete app reference and [Demo guide](DEMO_GUIDE.md) for executable scenarios. Verification status belongs in [Developer handoff](DEVELOPER_HANDOFF.md#verification), rather than implying equal live coverage on all services.

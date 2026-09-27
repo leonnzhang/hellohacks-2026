@@ -17,6 +17,8 @@
   let draftPreparedId = null;
   let draftAttempts = 0;
   let preparingDraft = false;
+  let autoSending = false;
+  const autoAttemptIds = new Set();
 
   const selectors = location.hostname === "claude.ai"
     ? ["[data-testid='chat-input'] [contenteditable='true']", ".ProseMirror[contenteditable='true']", "[contenteditable='true'][role='textbox']"]
@@ -193,7 +195,12 @@
       else document.body.append(pendingIndicator);
     }
     if (pendingIndicator) {
-      pendingIndicatorText.textContent = draftPreparedId === pending.id
+      pendingIndicatorText.textContent = pending.autoContinue
+        ? (autoSending || watchingSend ? "Relay · Continuing your conversation…"
+          : draftPreparedId === pending.id ? "Relay · Conversation ready. Press Send to continue."
+          : preparingDraft ? "Relay · Preparing your conversation…"
+          : "Relay · Clear any existing draft to continue the transfer.")
+        : draftPreparedId === pending.id
         ? "Relay · Chat ready to continue. Add your request at the end of the draft, then send."
         : "Relay · Preparing your chat. Clear any existing draft to insert the transfer.";
       pendingIndicator.hidden = pendingIndicatorDismissed;
@@ -203,6 +210,7 @@
 
   async function prepareTransferDraft() {
     if (!pending || draftPreparedId === pending.id || preparingDraft) return;
+    if (pending.autoContinue && hasExistingMessages()) return;
     const input = composer();
     if (!input) {
       if (++draftAttempts < 80) setTimeout(prepareTransferDraft, 250);
@@ -218,7 +226,9 @@
       } else if (existing.trim() && (!existingDraft || existingDraft.request.trim())) {
         notice("This chat has an existing draft. Clear it to insert the transfer context.");
       } else {
-        const draft = globalThis.RELAY_TRANSFER.buildTransferDraft(pending.prompt);
+        const draft = pending.autoContinue
+          ? globalThis.RELAY_TRANSFER.buildAugmentedPrompt(pending.prompt, pending.continuationRequest)
+          : globalThis.RELAY_TRANSFER.buildTransferDraft(pending.prompt);
         const inserted = await insertText(input, draft);
         const visibleDraft = globalThis.RELAY_TRANSFER.parseTransferDraft(inputText(input));
         if (inserted || (visibleDraft && normalized(visibleDraft.transfer) === normalized(pending.prompt)))
@@ -226,9 +236,32 @@
         else notice("Relay could not insert the transfer context. Press Send after writing your request to retry.");
       }
       updatePendingIndicator();
+      if (pendingLoaded) await autoContinueTransfer();
     } finally {
       preparingDraft = false;
     }
+  }
+
+  async function autoContinueTransfer() {
+    const transfer = pending;
+    if (!transfer?.autoContinue || transfer.autoAttempted || autoAttemptIds.has(transfer.id) ||
+        autoSending || preparing || draftPreparedId !== transfer.id || hasExistingMessages()) return;
+    const input = composer();
+    if (!input) return;
+    const expected = globalThis.RELAY_TRANSFER.buildAugmentedPrompt(transfer.prompt, transfer.continuationRequest);
+    // Never automatically send an existing or user-edited draft.
+    if (!matchesInsertedText(input, expected)) return;
+    autoAttemptIds.add(transfer.id);
+    autoSending = true;
+    updatePendingIndicator();
+    try {
+      const claim = await chrome.runtime.sendMessage({ type: "CLAIM_TRANSFER_SEND", id: transfer.id });
+      transfer.autoAttempted = true;
+      if (claim?.ok && pending?.id === transfer.id && !hasExistingMessages() && matchesInsertedText(input, expected)) {
+        await sendWithContext(input, inputText(input).trim(), true);
+      }
+    } catch { /* Keep the draft for a manual Send. Never retry automatically. */ }
+    finally { autoSending = false; updatePendingIndicator(); }
   }
 
   function confirmSend(input, transfer) {
@@ -250,12 +283,12 @@
         return;
       }
       if (++attempts < 60) setTimeout(check, 250);
-      else watchingSend = false;
+      else { watchingSend = false; updatePendingIndicator(); }
     };
     setTimeout(check, 250);
   }
 
-  async function sendWithContext(input, original) {
+  async function sendWithContext(input, original, automatic = false) {
     preparing = true;
     const transfer = pending;
     const draft = globalThis.RELAY_TRANSFER.parseTransferDraft(original);
@@ -284,7 +317,13 @@
         notice("Relay could not prepare context. Your message was not sent.");
         return;
       }
-      const button = sendButton(input);
+      let button = sendButton(input);
+      // Editors may enable Send a moment after accepting the inserted text.
+      for (let attempt = 0; automatic && !button && attempt < 20; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        button = sendButton(input);
+      }
+      if (automatic && (!matchesInsertedText(input, combined) || hasExistingMessages())) return;
       if (button) {
         confirmSend(input, transfer);
         replaying = true;
@@ -346,11 +385,12 @@
   async function refresh() {
     try {
       pending = await chrome.runtime.sendMessage({ type: "GET_PENDING_TRANSFER" });
-      if (pending) await prepareTransferDraft();
       memories = await chrome.runtime.sendMessage({ type: "GET_CORE_MEMORIES" }) || [];
       const search = await chrome.runtime.sendMessage({ type: "RAG_STATUS" });
       ragEnabled = !!search?.enabled;
       pendingLoaded = true;
+      if (pending) await prepareTransferDraft();
+      await autoContinueTransfer();
       updatePendingIndicator();
     } catch { pendingLoaded = true; /* Extension may have reloaded. */ }
   }
