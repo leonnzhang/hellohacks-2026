@@ -238,7 +238,10 @@ async function processAutoCapture(payload, sender) {
         autoMemoryLastError: ""
       });
       return { status: "processed", count: incoming.length,
-        saved: incoming.map(({ id, text }) => ({ id, text })) };
+        saved: incoming.map(({ id, text, category, sourceQuote }) => ({
+          id, text, quote: sourceQuote,
+          reason: globalThis.MEMORY_POLICY.categories.find((entry) => entry.id === category)?.why || ""
+        })) };
     });
   } catch (error) {
     try { await chrome.storage.local.set({ autoMemoryLastError: error?.message || "Could not analyze conversation" }); }

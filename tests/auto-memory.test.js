@@ -131,6 +131,9 @@ test("a successful auto-save notifies its chat so Undo can appear", async () => 
   assert.equal(tabMessages[0].message.type, "AUTO_MEMORY_SAVED");
   assert.deepEqual(Array.from(tabMessages[0].message.saved, (item) => item.id),
     Array.from(response.saved, (item) => item.id));
+  assert.equal(tabMessages[0].message.saved[0].quote, "I prefer concise answers");
+  assert.equal(tabMessages[0].message.saved[0].reason,
+    "Changes how future answers should be written.");
 });
 
 test("repeating an already saved preferred name gives feedback without another save", async () => {

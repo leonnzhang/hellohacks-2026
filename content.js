@@ -26,6 +26,8 @@
     let found = [];
     let captureMethod = "messages";
     if (service === "ChatGPT") {
+      const hasBothRoles = (items) => items.some((item) => item.role === "user") &&
+        items.some((item) => item.role === "assistant");
       found = [...document.querySelectorAll("[data-message-author-role]")]
         .map((node) => ({
           role: node.getAttribute("data-message-author-role") === "user" ? "user" : "assistant",
@@ -33,8 +35,8 @@
           node
         }))
         .filter((item) => item.text);
-      if (!found.length) {
-        found = [...document.querySelectorAll("[data-testid^='conversation-turn-'], main article")]
+      if (!hasBothRoles(found)) {
+        const fallback = [...document.querySelectorAll("[data-testid^='conversation-turn-'], main article")]
           .map((node) => {
             const text = cleanText(node).replace(/^(You said:|ChatGPT said:)\s*/i, "").trim();
             const label = node.innerText || "";
@@ -42,16 +44,20 @@
             return { role, text, node };
           })
           .filter((item) => item.text);
+        if (hasBothRoles(fallback)) found = fallback;
+        else found.push(...fallback.filter((item) => !found.some((existing) => existing.role === item.role)));
       }
-      if (!found.length) {
-        found = [...document.querySelectorAll("h4, [role='heading']")]
+      if (!hasBothRoles(found)) {
+        const fallback = [...document.querySelectorAll("h4, [role='heading']")]
           .filter((node) => /^(You said:|ChatGPT said:)$/.test((node.textContent || "").trim()))
           .map((node) => ({
             role: /^You said:/.test(node.textContent.trim()) ? "user" : "assistant",
             text: cleanText(node.parentElement).replace(/^(You said:|ChatGPT said:)\s*/i, "").trim(),
-            node
+            node: node.parentElement
           }))
           .filter((item) => item.text);
+        if (hasBothRoles(fallback)) found = fallback;
+        else found.push(...fallback.filter((item) => !found.some((existing) => existing.role === item.role)));
       }
     } else if (service === "Claude") {
       found = [
@@ -73,7 +79,8 @@
         (previous.node.contains(item.node) || item.node.contains(previous.node)));
     }).map(({ role, text }) => ({ role, text }));
 
-    if (!messages.length) {
+    if (!messages.some((item) => item.role === "user") ||
+        !messages.some((item) => item.role === "assistant")) {
       const main = document.querySelector("main, [role='main']");
       let pageText = (main?.innerText || document.body.innerText || "").trim();
       if (service === "ChatGPT") {
@@ -82,14 +89,18 @@
         pageText = pageText.replace(/ChatGPT can make mistakes[\s\S]*$/i, "").trim();
         const markers = [...pageText.matchAll(/(?:^|\n)(You said:|ChatGPT said:)\s*/gi)];
         if (markers.length) {
-          messages = markers.map((marker, index) => {
+          const parsed = markers.map((marker, index) => {
             const end = markers[index + 1]?.index ?? pageText.length;
             const text = pageText.slice(marker.index + marker[0].length, end)
               .replace(/^Memory updated\s*$/gim, "")
               .trim();
             return { role: /^You/i.test(marker[1]) ? "user" : "assistant", text };
           }).filter((message) => message.text);
-          captureMethod = "accessible text";
+          if (parsed.some((item) => item.role === "user") &&
+              parsed.some((item) => item.role === "assistant")) {
+            messages = parsed;
+            captureMethod = "accessible text";
+          }
         }
       }
       if (!messages.length && pageText.length > 20) {
@@ -403,6 +414,8 @@
   let autoTimer;
   let autoFirstChangeAt = 0;
   let lastAutoSignature = "";
+  let failedAutoSignature = "";
+  let autoRetryAfter = 0;
   let autoSending = false;
   let autoMemoryToast = null;
   let autoMemoryToastTimer = null;
@@ -428,52 +441,118 @@
     const toast = document.createElement("div");
     autoMemoryToast = toast;
     toast.setAttribute("role", "status");
-    toast.style.cssText = "position:fixed;right:18px;bottom:82px;z-index:2147483647;width:min(340px,calc(100vw - 36px));padding:12px 14px;border-radius:12px;background:#26313d;color:#fff;box-shadow:0 8px 24px #0004;font:12px/1.4 system-ui,sans-serif";
+    toast.style.cssText = "position:fixed;right:18px;bottom:140px;z-index:2147483647;width:min(380px,calc(100vw - 36px));padding:14px;border-radius:14px;background:#26313d;color:#fff;box-shadow:0 8px 24px #0004;font:12px/1.45 system-ui,sans-serif";
     const title = document.createElement("strong");
-    title.textContent = saved.length === 1 ? "Memory saved" : `${saved.length} memories saved`;
-    const detail = document.createElement("p");
-    detail.style.cssText = "margin:5px 0 9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d5dce5";
-    detail.textContent = saved.length === 1 ? saved[0].text : `${saved[0].text} and ${saved.length - 1} more`;
+    title.style.cssText = "display:block;font-size:13px;margin-bottom:9px";
+    title.textContent = saved.length === 1 ? "Memory added" : `${saved.length} memories added`;
+    const details = document.createElement("div");
+    details.style.cssText = "display:grid;gap:9px;max-height:240px;overflow:auto";
+    for (const item of saved.slice(0, 3)) {
+      const entry = document.createElement("div");
+      entry.style.cssText = "border-left:2px solid #9fc5ff;padding-left:9px";
+      const fact = document.createElement("div");
+      fact.style.cssText = "font-weight:650;overflow-wrap:anywhere";
+      fact.textContent = item.text;
+      entry.append(fact);
+      if (item.quote) {
+        const source = document.createElement("div");
+        source.style.cssText = "margin-top:3px;color:#d5dce5;overflow-wrap:anywhere";
+        source.textContent = `Because you said “${item.quote}”`;
+        entry.append(source);
+      }
+      if (item.reason) {
+        const reason = document.createElement("div");
+        reason.style.cssText = "margin-top:3px;color:#abbcd0;overflow-wrap:anywhere";
+        reason.textContent = item.reason;
+        entry.append(reason);
+      }
+      details.append(entry);
+    }
+    if (saved.length > 3) {
+      const more = document.createElement("div");
+      more.style.color = "#d5dce5";
+      more.textContent = `And ${saved.length - 3} more ${saved.length === 4 ? "memory" : "memories"}`;
+      details.append(more);
+    }
     const actions = document.createElement("div");
-    actions.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px";
+    actions.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:11px";
     const countdown = document.createElement("span");
     countdown.style.color = "#d5dce5";
     const undo = document.createElement("button");
     undo.type = "button";
-    undo.textContent = "Undo";
+    undo.textContent = saved.length === 1 ? "Undo" : "Undo all";
     undo.style.cssText = "border:0;background:none;color:#9fc5ff;font:700 12px system-ui,sans-serif;cursor:pointer;padding:0";
+    const errorNote = document.createElement("div");
+    errorNote.style.cssText = "color:#ffb4ae;margin-top:5px";
+    const track = document.createElement("div");
+    track.setAttribute("role", "progressbar");
+    track.setAttribute("aria-label", "Seconds left to undo");
+    track.setAttribute("aria-valuemin", "0");
+    track.setAttribute("aria-valuemax", "10");
+    track.style.cssText = "height:4px;margin-top:10px;border-radius:99px;overflow:hidden;background:#506274";
+    const bar = document.createElement("div");
+    bar.style.cssText = "height:100%;width:100%;background:#9fc5ff;transform-origin:left";
+    track.append(bar);
     const deadline = Date.now() + 10000;
+    let finished = false;
+    let undoPending = false;
+    let timer;
     const close = () => {
-      clearInterval(autoMemoryToastTimer);
-      autoMemoryToastTimer = null;
+      clearInterval(timer);
       toast.remove();
-      if (autoMemoryToast === toast) autoMemoryToast = null;
+      if (autoMemoryToast === toast) {
+        autoMemoryToast = null;
+        autoMemoryToastTimer = null;
+      }
+    };
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearInterval(timer);
+      if (autoMemoryToast === toast) autoMemoryToastTimer = null;
+      title.textContent = saved.length === 1 ? "Saved in Relay" : `${saved.length} memories saved in Relay`;
+      countdown.textContent = "Undo window ended";
+      undo.remove();
+      track.remove();
+      setTimeout(close, 2000);
     };
     const tick = () => {
       const seconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       countdown.textContent = `Undo available for ${seconds}s`;
-      if (!seconds) close();
+      track.setAttribute("aria-valuenow", String(seconds));
+      if (!seconds && !undoPending) finish();
     };
     undo.addEventListener("click", async () => {
+      if (finished || undoPending) return;
+      if (Date.now() >= deadline) return finish();
+      undoPending = true;
       undo.disabled = true;
       try {
         const result = await chrome.runtime.sendMessage({ type: "UNDO_AUTO_MEMORIES", ids: saved.map((item) => item.id) });
         if (!result?.ok) throw new Error("Undo was unavailable.");
+        finished = true;
         title.textContent = saved.length === 1 ? "Memory removed" : "Memories removed";
-        detail.textContent = "You can still add or edit memories in Relay.";
+        countdown.textContent = "Removed from Relay";
         actions.remove();
-        clearInterval(autoMemoryToastTimer);
+        track.remove();
+        clearInterval(timer);
+        if (autoMemoryToast === toast) autoMemoryToastTimer = null;
         setTimeout(close, 2000);
       } catch {
+        undoPending = false;
         undo.disabled = false;
-        detail.textContent = "Could not undo. Open Relay to remove the memory.";
+        errorNote.textContent = "Could not undo. You can remove it in Memory Center.";
+        if (Date.now() >= deadline) finish();
       }
     });
     actions.append(countdown, undo);
-    toast.append(title, detail, actions);
+    toast.append(title, details, actions, errorNote, track);
     document.body.append(toast);
     tick();
-    autoMemoryToastTimer = setInterval(tick, 1000);
+    bar.animate([{ transform: "scaleX(1)" }, { transform: "scaleX(0)" }],
+      { duration: 10000, easing: "linear", fill: "forwards" });
+    timer = setInterval(tick, 250);
+    autoMemoryToastTimer = timer;
   }
   function showAutoMemoryError() {
     const toast = document.createElement("div");
@@ -488,17 +567,29 @@
     autoSending = true;
     try {
       const status = await chrome.runtime.sendMessage({ type: "AUTO_MEMORY_STATUS" });
-      if (!status?.enabled) return;
+      if (!status?.enabled) {
+        lastAutoSignature = "";
+        failedAutoSignature = "";
+        return;
+      }
       const result = capture();
       if (result.captureMethod === "page text" || !result.messages.some((item) => item.role === "user") ||
           !result.messages.some((item) => item.role === "assistant")) return;
       const signature = result.url + JSON.stringify(result.messages);
       if (signature === lastAutoSignature) return;
+      if (signature === failedAutoSignature && Date.now() < autoRetryAfter) return;
       const reply = await chrome.runtime.sendMessage({ type: "AUTO_MEMORY_CAPTURE", capture: result });
-      if (["processed", "unchanged", "already_saved", "error"].includes(reply?.status)) lastAutoSignature = signature;
+      if (["processed", "unchanged", "already_saved"].includes(reply?.status)) {
+        lastAutoSignature = signature;
+        failedAutoSignature = "";
+      }
       if (reply?.status === "processed" && reply.saved?.length) showAutoMemoryToast(reply.saved);
       if (reply?.status === "already_saved") showAlreadySavedToast(reply.text);
-      if (reply?.status === "error") showAutoMemoryError();
+      if (reply?.status === "error") {
+        failedAutoSignature = signature;
+        autoRetryAfter = Date.now() + 60000;
+        showAutoMemoryError();
+      }
       if (reply?.status === "busy") scheduleAutoCapture(15000);
     } catch { /* Extension may have been reloaded while this tab was open. */ }
     finally { autoSending = false; }
@@ -544,6 +635,7 @@
     }
     if (message.type === "RESCAN_AUTO_MEMORY") {
       lastAutoSignature = "";
+      failedAutoSignature = "";
       scheduleAutoCapture(500);
       sendResponse({ ok: true });
     }
