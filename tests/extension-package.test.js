@@ -14,6 +14,8 @@ test("manifest, worker imports, and panel assets exist and JavaScript parses", (
     .flatMap((match) => [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]));
   const assets = new Set([
     manifest.background.service_worker, ...imports,
+    ...Object.values(manifest.icons || {}),
+    ...Object.values(manifest.action?.default_icon || {}),
     ...manifest.content_scripts.flatMap((item) => item.js),
     ...manifest.web_accessible_resources.flatMap((item) => item.resources),
     ...[...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((match) => match[1])
