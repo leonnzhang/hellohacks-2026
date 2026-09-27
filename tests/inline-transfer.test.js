@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-test("inline transfer arms context before loading the destination chat", async () => {
+test("inline transfer needs no API key and arms context before loading the destination chat", async () => {
   const template = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "prompts", "handoff.json"), "utf8"));
   const stored = { autoMemorySettings: { apiKey: "test-key" }, memories: [
     { text: "I have a peanut allergy.", scope: "global", origin: "automatic", category: "health_context" },
@@ -58,16 +58,13 @@ test("inline transfer arms context before loading the destination chat", async (
     ]
   };
   stored.autoMemorySettings.apiKey = "";
-  const blocked = await transfer({ destination: "Claude", capture }, sender);
-  assert.equal(blocked.code, "API_KEY_REQUIRED");
-  assert.equal(Object.keys(session).length, 0);
-  stored.autoMemorySettings.apiKey = "test-key";
   const result = await transfer({ destination: "Claude", capture }, sender);
   assert.equal(result.ok, true);
   assert.equal(result.destination, "Claude");
   assert.equal(openedUrl, "https://claude.ai/new");
   const armed = session["pendingTransfer:8"];
   assert.equal(armed.autoContinue, true);
+  assert.equal(armed.retrievalQuery, "Help me plan the next step.");
   assert.match(armed.continuationRequest, /Briefly acknowledge/);
   assert.doesNotMatch(armed.prompt, /I have a peanut allergy/);
   assert.doesNotMatch(armed.prompt, /I enjoy hiking/);

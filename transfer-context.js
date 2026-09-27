@@ -297,8 +297,8 @@
       let selectedMemories = memories;
       let relatedConversations = [];
       try {
-        const result = await chrome.runtime.sendMessage({ type: "RAG_RETRIEVE", query: request });
-        if (result?.ragUsed) {
+        const result = await chrome.runtime.sendMessage({ type: "RAG_RETRIEVE", query: automatic && transfer?.retrievalQuery || request });
+        if (Array.isArray(result?.memories)) {
           selectedMemories = Array.isArray(result.memories) ? result.memories : memories;
           relatedConversations = Array.isArray(result.relatedConversations) ? result.relatedConversations : [];
         }
@@ -396,7 +396,7 @@
       pending = await chrome.runtime.sendMessage({ type: "GET_PENDING_TRANSFER" });
       memories = await chrome.runtime.sendMessage({ type: "GET_CORE_MEMORIES" }) || [];
       const search = await chrome.runtime.sendMessage({ type: "RAG_STATUS" });
-      ragEnabled = !!search?.enabled;
+      ragEnabled = !!search?.enabled && search?.memoryEnabled !== false;
       pendingLoaded = true;
       if (pending) await prepareTransferDraft();
       await autoContinueTransfer();
@@ -406,6 +406,6 @@
   refresh();
   setTimeout(refresh, 1000);
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && (changes.memories || changes.ragEnabled)) refresh();
+    if (area === "local" && (changes.memories || changes.ragEnabled || changes.memoryEnabled || changes.autoMemorySettings)) refresh();
   });
 })();

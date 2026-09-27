@@ -6,7 +6,7 @@ Carry a conversation between ChatGPT, Claude, and Gemini, and keep useful person
 
 ## Features
 
-- **One-click continuation:** a compact, non-scrolling Transfer selector beside the composer opens a fresh destination chat, inserts the conversation, and sends a continuation request automatically. Same-service transfers work too.
+- **One-click continuation:** a compact, non-scrolling Transfer selector beside the composer opens a fresh destination chat, inserts the conversation, and sends a continuation request automatically. The menu offers the other two services.
 - **Useful continuation:** answer the last user message if it is unanswered; otherwise briefly acknowledge the imported context and invite the next message.
 - **Recoverable sending:** automatic sending is attempted once. A failed attempt leaves a prepared draft for manual Send. Existing drafts and user edits are preserved.
 - **Memory Center:** Overview, Saved memories, Memory rules, and Privacy & data in a centered overlay. Open it from Transfer or the pinned extension icon on a supported chat.
@@ -27,7 +27,7 @@ See the [feature guide](docs/FEATURES.md) for controls, requirements, edge cases
 
 Transfer and manual memory work without an OpenAI API key. Chat services retain their own login and access requirements.
 
-For automatic memory or context search, open **Privacy & data → OpenAI connection**, enter your own key, and click **Save key**. Enable **Automatic memory** and/or **Context search** separately. Switches save immediately; saving a key does not enable either feature. API charges may apply.
+For automatic memory or context search, open **Privacy & data → OpenAI connection**, enter your own key, and click **Save key**. Enable **Automatic memory** and/or **Context search** separately. Use **Save changes** to apply the key and checkbox settings. The Overview **Pause saving / Turn on** button applies immediately. API charges may apply.
 
 After changing extension code, reload Relay in `chrome://extensions`, then reload existing chat tabs.
 
@@ -37,7 +37,7 @@ Memories, settings, and any legacy saved conversations live in this Chrome profi
 
 Relay transfers context as one message, not native historical chat turns. It reads messages present in the page DOM; unloaded history is unavailable. Inline transfer caps each message at 12,000 characters and bounds the assembled transcript to 20,000 characters, retaining its beginning and end plus an omission marker. It does not save a full local conversation archive during transfer.
 
-With context search off, unavailable, or empty, sending falls back to all eligible core memories. A successful search can return no matches. The current automatic continuation uses its generated continuation request as the search query, which can be less specific than a user-written question.
+With context search off, unavailable, or empty, sending falls back to all eligible core memories. A successful search can return no matches. Automatic continuation searches using recent user messages from the source conversation.
 
 ## Documentation
 
@@ -55,4 +55,8 @@ With context search off, unavailable, or empty, sending falls back to all eligib
 
 ## Verification
 
-Run `node --test tests/*.test.js` with Node.js. The current suite has 40 passing tests. Live synthetic continuation has been verified into ChatGPT and Gemini; the new automatic-send flow still needs a live Claude check. See the [developer handoff](docs/DEVELOPER_HANDOFF.md#verification) for the scope of that evidence.
+Run `node --test tests/*.test.js` with Node.js. The suite covers transfer, memory, settings, and layout behavior. Live synthetic continuation has been verified into ChatGPT and Gemini; the new automatic-send flow still needs a live Claude check. See the [developer handoff](docs/DEVELOPER_HANDOFF.md#verification) for the scope of that evidence.
+
+### Memory inclusion
+
+**Privacy & data → Include saved memories in chats** controls whether Relay adds saved context. It defaults to on and works without an API key. When semantic search is off, lacks a key, has no index, or fails, Relay includes all eligible core memories. A successful search includes only its matches, which may be empty. Turn memory inclusion off and save changes to transfer only the conversation and omit saved context from new chats. Pausing automatic saving stops new memory extraction; it does not disable inclusion or delete existing memories.

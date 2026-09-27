@@ -10,7 +10,7 @@ function panelHarness() {
   const element = (id) => {
     if (!elements.has(id)) {
       elements.set(id, {
-        value: "", textContent: "", options: [], style: {},
+        value: "", textContent: "", options: [], style: {}, checked: id === "memory-enabled",
         classList: { add() {}, remove() {}, toggle() {} },
         focus() {}, setAttribute() {},
         replaceChildren(...options) { this.options = options; },

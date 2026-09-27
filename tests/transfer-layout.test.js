@@ -39,7 +39,7 @@ test("button tracks composer movement and keeps the upward menu within viewport"
   let rect = { top: 600, bottom: 700, left: 200, right: 1000 };
   const context = vm.createContext({
     window: {}, innerWidth: 1200, innerHeight: 800,
-    transferHost: { style: {} }, transferPanel: { style: {} },
+    transferHost: { style: {} }, transferPanel: { style: {}, getBoundingClientRect: () => ({ height: 300 }) },
     transferButton: { getBoundingClientRect: () => ({ width: 110 }) },
     trackedComposer: { isConnected: true, getClientRects: () => [rect] },
     trackedAnchor: { isConnected: true, getBoundingClientRect: () => rect }
@@ -56,7 +56,10 @@ test("button tracks composer movement and keeps the upward menu within viewport"
   assert.equal(context.transferHost.style.left, "202px");
   assert.equal(context.transferPanel.style.width, "304px");
   assert.equal(context.transferPanel.style.left, "-194px");
-  assert.equal(context.transferPanel.style.maxHeight, "185px");
+  assert.equal(context.transferPanel.style.maxHeight, undefined);
+  const menuTop = Number.parseFloat(context.transferHost.style.top) + Number.parseFloat(context.transferPanel.style.top);
+  assert.ok(menuTop >= 8);
+  assert.ok(menuTop + 300 <= 492);
   assert.equal(Number.parseFloat(context.transferHost.style.top) + 38, rect.top - 10);
   rect = { ...rect, top: 30 };
   context.positionTransferControl();

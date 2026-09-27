@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function harness({ existing = false, pending = null, sendSucceeds = false, noSendButton = false, editDuringClaim = false, initial = "What should I do next?" } = {}) {
+function harness({ memoryDisabledAtSend = false, existing = false, pending = null, sendSucceeds = false, noSendButton = false, editDuringClaim = false, initial = "What should I do next?" } = {}) {
   const listeners = {};
   let dialogs = 0;
   let clicks = 0;
@@ -70,7 +70,7 @@ function harness({ existing = false, pending = null, sendSucceeds = false, noSen
         return { ok: true };
       }
       if (message.type === "RAG_STATUS") return { enabled: false };
-      if (message.type === "RAG_RETRIEVE") return { ragUsed: false };
+      if (message.type === "RAG_RETRIEVE") return memoryDisabledAtSend ? { memories: [], relatedConversations: [], memoryEnabled: false } : { ragUsed: false };
       if (message.type === "COMPLETE_PENDING_TRANSFER") { completed++; return { ok: true }; }
       return {};
     } },
@@ -231,4 +231,12 @@ test("a user edit during the automatic claim prevents sending", async () => {
   await app.settle();
   assert.equal(app.getClicks(), 0);
   assert.match(app.input.value, /My own request/);
+});
+
+test("send-time memory opt-out removes cached memories while continuing the conversation", async () => {
+  const app = harness({ memoryDisabledAtSend: true, pending: autoTransfer(), initial: "", sendSucceeds: true });
+  await app.settle();
+  assert.equal(app.getClicks(), 1);
+  assert.match(app.getSentText(), /Earlier conversation/);
+  assert.doesNotMatch(app.getSentText(), /I prefer concise answers/);
 });

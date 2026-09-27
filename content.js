@@ -323,7 +323,7 @@
     return anchor;
   }
 
-  function transferSummary(result, memoryCount) {
+  function transferSummary(result, memoryCount, memoryEnabled = true) {
     const messages = result.messages.filter((item) => ["user", "assistant"].includes(item.role) && typeof item.text === "string" && item.text.trim());
     const transcript = messages.map((item) => `${item.role.toUpperCase()}:\n${item.text.slice(0, 12000)}`).join("\n\n");
     const trimmed = transcript.length > 20000 || messages.some((item) => item.text.length > 12000);
@@ -332,7 +332,7 @@
     // The transfer payload contains text only. Never imply uploaded files move
     // with it, even when a filename appears in a captured message.
     return { captured,
-      memories: memoryCount == null ? "Core memories unavailable" : `${memoryCount} core ${memoryCount === 1 ? "memory" : "memories"}` };
+      memories: !memoryEnabled ? "Memory inclusion off" : memoryCount == null ? "Core memories unavailable" : `${memoryCount} core ${memoryCount === 1 ? "memory" : "memories"}` };
   }
 
   function destinationSuggestions(messages) {
@@ -391,7 +391,12 @@
     const menuLeft = Math.max(left + 8, Math.min(buttonLeft + buttonWidth - menuWidth, left + width - menuWidth - 8));
     setStyle(transferPanel, "width", `${menuWidth}px`);
     setStyle(transferPanel, "left", `${menuLeft - buttonLeft}px`);
-    setStyle(transferPanel, "maxHeight", `${Math.max(0, buttonTop - top - 17)}px`);
+    // Keep all actions visible without an internal scrollbar. In a short window,
+    // shift the full menu inside the viewport, even if it overlaps the composer.
+    setStyle(transferPanel, "bottom", "auto");
+    const menuHeight = transferPanel.getBoundingClientRect().height;
+    const menuTop = Math.max(top + 8, Math.min(buttonTop - menuHeight - 9, top + height - menuHeight - 8));
+    setStyle(transferPanel, "top", `${menuTop - buttonTop}px`);
   }
 
   function trackComposerPosition() {
@@ -441,7 +446,7 @@
         .launcher:hover{box-shadow:0 6px 18px #00000026;transform:translateY(-1px)}
         .mark{display:grid;place-items:center;width:26px;height:26px;flex:none;border-radius:50%;background:var(--rt-accent);color:var(--rt-accent-text);font-size:15px;line-height:1}
         .label{font-size:12px;font-weight:700;letter-spacing:-.01em}.chevron{margin-left:1px;color:var(--rt-muted);font-size:13px}
-        .menu{position:absolute;right:0;bottom:calc(100% + 9px);width:min(322px,calc(100vw - 20px));max-height:min(440px,calc(100vh - 24px));overflow:auto;padding:14px;border:1px solid var(--rt-border);border-radius:max(16px,var(--rt-radius));background:var(--rt-surface);color:var(--rt-text);box-shadow:0 16px 42px #0000002e}
+        .menu{position:absolute;right:0;bottom:calc(100% + 9px);width:min(322px,calc(100vw - 20px));overflow:visible;padding:14px;border:1px solid var(--rt-border);border-radius:max(16px,var(--rt-radius));background:var(--rt-surface);color:var(--rt-text);box-shadow:0 16px 42px #0000002e}
         .menu{right:auto;min-height:0;overscroll-behavior:contain}.menu[hidden],.copy[hidden]{display:none}
         .eyebrow{margin:0 0 3px;color:var(--rt-muted);font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
         .head{padding:2px 2px 11px}.head strong{display:block;font-size:15px;letter-spacing:-.02em}.head small{display:block;margin-top:4px;color:var(--rt-muted);font-size:11px;line-height:1.35}
@@ -500,8 +505,8 @@
           const result = capture();
           renderDestinations(result.messages);
           positionTransferControl();
-          const showSummary = (count) => {
-            const summary = transferSummary(result, count);
+          const showSummary = (count, memoryEnabled = true) => {
+            const summary = transferSummary(result, count, memoryEnabled);
             const footer = shadow.querySelector(".context-count");
             footer.replaceChildren(...Object.values(summary).map((text) => {
               const line = document.createElement("span");
@@ -512,9 +517,9 @@
           };
           showSummary(null);
           try {
-            const { count = 0, savingActive = false } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
+            const { count = 0, savingActive = false, memoryEnabled = true } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
             shadow.querySelector(".saving-state").textContent = savingActive ? "Saving active" : "Saving off";
-            showSummary(count);
+            showSummary(count, memoryEnabled);
           } catch { showSummary(null); shadow.querySelector(".saving-state").textContent = "Status unavailable"; }
         }
       });
@@ -575,12 +580,6 @@
     status.textContent = `Opening ${destination}…`;
     try {
       const reply = await chrome.runtime.sendMessage({ type: "INLINE_TRANSFER", destination, capture: result });
-      if (reply?.code === "API_KEY_REQUIRED") {
-        transferPanel.hidden = true;
-        transferButton.setAttribute("aria-expanded", "false");
-        openMemoryCenter("privacy");
-        return;
-      }
       if (reply?.ok) { transferPanel.hidden = true; transferButton.setAttribute("aria-expanded", "false"); }
       status.textContent = reply?.ok ? `Continuing in ${destination}…` :
         (reply?.message || "Transfer failed.");

@@ -105,9 +105,10 @@ function queueRagSync() {
 
 async function retrieveContext(query, fallbackMemories = []) {
   const memories = globalThis.RELAY_TRANSFER.pickMemories(fallbackMemories);
-  const { ragEnabled = false, autoMemorySettings = {} } =
-    await chrome.storage.local.get(["ragEnabled", "autoMemorySettings"]);
-  if (!ragEnabled) return { memories, relatedConversations: [] };
+  const { ragEnabled = false, memoryEnabled = true, autoMemorySettings = {} } =
+    await chrome.storage.local.get(["ragEnabled", "memoryEnabled", "autoMemorySettings"]);
+  if (!memoryEnabled) return { memories: [], relatedConversations: [], memoryEnabled: false };
+  if (!ragEnabled || !autoMemorySettings.apiKey?.trim()) return { memories, relatedConversations: [] };
   try {
     const result = await globalThis.RELAY_RAG.search(query, autoMemorySettings.apiKey);
     if (!result.indexedCount) return { memories, relatedConversations: [] };
@@ -294,10 +295,6 @@ async function processInlineTransfer(payload, sender) {
       !(destination in globalThis.RELAY_TRANSFER.destinations)) {
     return { ok: false, message: "Open a supported conversation to transfer it." };
   }
-  const { autoMemorySettings = {} } = await chrome.storage.local.get("autoMemorySettings");
-  if (!autoMemorySettings.apiKey?.trim()) return {
-    ok: false, code: "API_KEY_REQUIRED", message: "Add and save your API key in Privacy & data before transferring."
-  };
   const messages = Array.isArray(capture.messages) ? capture.messages.filter((item) =>
     item && ["user", "assistant"].includes(item.role) && typeof item.text === "string" && item.text.trim()
   ).map((item) => ({ role: item.role, text: item.text.slice(0, 12000) })) : [];
@@ -320,6 +317,8 @@ async function processInlineTransfer(payload, sender) {
   try {
     await chrome.storage.session.set({ [`pendingTransfer:${tab.id}`]: {
       id: crypto.randomUUID(), prompt, autoContinue: true,
+      retrievalQuery: messages.filter((item) => item.role === "user").slice(-4)
+        .map((item) => globalThis.RELAY_TRANSFER.stripAugmentedPrompt(item.text)).join("\n\n").slice(-6000),
       continuationRequest: messages.at(-1).role === "user"
         ? "Continue this conversation by answering the final user message in PREVIOUS CONVERSATION. Use the earlier messages as context."
         : "Continue this conversation here. Briefly acknowledge that you have the context and invite my next message. Do not repeat the previous answer or invent a new request.",
@@ -335,7 +334,8 @@ async function processInlineTransfer(payload, sender) {
 
 async function coreMemories(sender) {
   if (!supportedChatUrl(sender.tab?.url || "")) return [];
-  const { memories = [] } = await chrome.storage.local.get("memories");
+  const { memories = [], memoryEnabled = true } = await chrome.storage.local.get(["memories", "memoryEnabled"]);
+  if (!memoryEnabled) return [];
   return globalThis.RELAY_TRANSFER.pickMemories(memories).map(({ id, text }) => ({ id, text }));
 }
 
@@ -460,9 +460,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === "INLINE_CONTEXT_STATUS") {
-    chrome.storage.local.get(["memories", "ragEnabled", "autoMemorySettings"])
-      .then(({ memories = [], ragEnabled = false, autoMemorySettings = {} }) => sendResponse({
-        count: globalThis.RELAY_TRANSFER.pickMemories(memories).length, ragEnabled: !!ragEnabled,
+    chrome.storage.local.get(["memories", "ragEnabled", "autoMemorySettings", "memoryEnabled"])
+      .then(({ memories = [], ragEnabled = false, autoMemorySettings = {}, memoryEnabled = true }) => sendResponse({
+        count: memoryEnabled ? globalThis.RELAY_TRANSFER.pickMemories(memories).length : 0, ragEnabled: !!ragEnabled, memoryEnabled,
         savingActive: !!(autoMemorySettings.enabled && autoMemorySettings.apiKey)
       }))
       .catch(() => sendResponse({ count: 0, ragEnabled: false }));
@@ -496,8 +496,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === "RAG_STATUS") {
-    Promise.all([chrome.storage.local.get(["ragEnabled", "ragLastError"]), globalThis.RELAY_RAG.count()])
-      .then(([settings, chunks]) => sendResponse({ enabled: !!settings.ragEnabled, error: settings.ragLastError || "", chunks }))
+    Promise.all([chrome.storage.local.get(["ragEnabled", "ragLastError", "memoryEnabled"]), globalThis.RELAY_RAG.count()])
+      .then(([settings, chunks]) => sendResponse({ enabled: !!settings.ragEnabled, memoryEnabled: settings.memoryEnabled !== false, error: settings.ragLastError || "", chunks }))
       .catch((error) => sendResponse({ enabled: false, error: error?.message || "Could not read search index.", chunks: 0 }));
     return true;
   }

@@ -7,6 +7,7 @@ const state = {
   memories: [],
   memorySuggestions: [],
   autoMemorySettings: { enabled: false, apiKey: "" },
+  memoryEnabled: true,
   ragEnabled: false,
   ragChunks: 0,
   ragLastError: "",
@@ -21,11 +22,11 @@ let statusTimer;
 
 function status(message, error = false) {
   const element = $("status");
-  element.textContent = message;
+  $("status-text").textContent = message;
   element.classList.toggle("error", error);
   element.classList.add("show");
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => element.classList.remove("show"), 5500);
+  if (!error) statusTimer = setTimeout(() => element.classList.remove("show"), 5500);
 }
 
 function formatTranscript(messages) {
@@ -36,8 +37,8 @@ function buildPrompt(retrieved = null) {
   if (!handoffTemplate) return "";
   return globalThis.RELAY_TRANSFER.buildPrompt({
     transcript: $("transcript").value,
-    memories: retrieved ? retrieved.memories : pickMemories(state.memories),
-    relatedConversations: retrieved?.relatedConversations || [],
+    memories: !state.memoryEnabled ? [] : retrieved ? retrieved.memories : pickMemories(state.memories),
+    relatedConversations: state.memoryEnabled ? retrieved?.relatedConversations || [] : [],
     template: handoffTemplate
   });
 }
@@ -56,7 +57,7 @@ function refreshPrompt() {
   $("prompt-preview").value = buildPrompt();
   const chosen = pickMemories(state.memories);
   const count = chosen.length;
-  $("auto-memory-summary").textContent = state.ragEnabled
+  $("auto-memory-summary").textContent = !state.memoryEnabled ? "Memory inclusion is off. Only the conversation is transferred." : state.ragEnabled
     ? "Saved memories and conversations will be searched for relevant context when you prepare the transfer."
     : count
       ? `${count} core ${count === 1 ? "memory" : "memories"} included automatically.`
@@ -204,11 +205,11 @@ function renderMemoryMap() {
 }
 
 function renderRetrievalHint() {
-  $("retrieval-hint").textContent = state.ragEnabled
+  $("retrieval-hint").textContent = !state.memoryEnabled ? "Turn on memory inclusion in Privacy & data to try a question." : state.ragEnabled
     ? state.ragChunks ? "Search uses your local index. The question is sent to OpenAI for embedding."
       : "Semantic search is on; the local index is still being prepared."
     : "Turn on semantic search in Privacy & data to try a question.";
-  $("retrieval-btn").disabled = !state.ragEnabled || !state.ragChunks;
+  $("retrieval-btn").disabled = !state.memoryEnabled || !state.ragEnabled || !state.ragChunks;
 }
 
 function addRetrievalResult(parent, label, text) {
@@ -377,6 +378,7 @@ function renderMemories() {
 }
 
 function renderAutoSettings() {
+  $("memory-enabled").checked = state.memoryEnabled;
   $("auto-memory-enabled").checked = !!state.autoMemorySettings.enabled;
   $("auto-memory-status").textContent = state.autoMemorySettings.enabled ? "On" : "Off";
   $("auto-memory-key").placeholder = state.autoMemorySettings.apiKey ? "•".repeat(40) : "Enter your API key";
@@ -399,7 +401,8 @@ function updateSettingsDirty() {
   if (!hasKey) $("auto-memory-enabled").checked = false;
   if (!hasKey) $("rag-enabled").checked = false;
   $("saving-key-hint").textContent = hasKey ? "Changes take effect when you save." : "Enter an API key above to enable automatic saving and semantic search.";
-  const changed = !!$("auto-memory-enabled").checked !== !!state.autoMemorySettings.enabled ||
+  const changed = !!$("memory-enabled").checked !== state.memoryEnabled ||
+    !!$("auto-memory-enabled").checked !== !!state.autoMemorySettings.enabled ||
     !!$("rag-enabled").checked !== !!state.ragEnabled ||
     (!!key && key !== (state.autoMemorySettings.apiKey || ""));
   $("save-auto-settings-btn").disabled = !changed;
@@ -565,12 +568,14 @@ async function saveAutoSettings() {
   const apiKey = $("auto-memory-key").value.trim() || state.autoMemorySettings.apiKey;
   const enabled = $("auto-memory-enabled").checked;
   const ragEnabled = $("rag-enabled").checked;
+  const memoryEnabled = $("memory-enabled").checked;
   if ((enabled || ragEnabled) && !apiKey) return status("Enter an OpenAI API key before enabling saving or semantic search.", true);
   const ragChanged = ragEnabled !== state.ragEnabled;
   $("save-auto-settings-btn").disabled = true;
   try {
     const autoMemorySettings = { enabled, apiKey };
-    await chrome.storage.local.set({ autoMemorySettings, autoMemoryLastError: "" });
+    await chrome.storage.local.set({ autoMemorySettings, memoryEnabled, autoMemoryLastError: "" });
+    state.memoryEnabled = memoryEnabled;
     state.autoMemorySettings = autoMemorySettings;
     state.autoMemoryLastError = "";
     $("auto-memory-key").value = "";
@@ -581,6 +586,8 @@ async function saveAutoSettings() {
     }
     updateSettingsDirty();
     if (enabled) await rescanActiveTab();
+    refreshPrompt();
+    renderRetrievalHint();
     status("Settings saved.");
   } catch (error) { status(`Could not save settings: ${error.message}`, true); updateSettingsDirty(); }
 }
@@ -787,11 +794,6 @@ async function copyPrompt(preparedPrompt = null) {
 }
 
 async function openAndFill() {
-  if (!state.autoMemorySettings.apiKey?.trim()) {
-    showApiKeySettings();
-    status("Add and save your API key before transferring.");
-    return;
-  }
   const prompt = await preparePrompt();
   if (!prompt) return status("Add context to the prompt first.", true);
   const destination = $("destination").value;
@@ -827,8 +829,9 @@ async function init() {
   } catch (error) {
     status(`Handoff template could not load: ${error.message}`, true);
   }
-  const { chats = [], memories = [], memorySuggestions = [], autoMemorySettings = {}, autoMemoryLastError = "" } =
-    await chrome.storage.local.get(["chats", "memories", "memorySuggestions", "autoMemorySettings", "autoMemoryLastError"]);
+  const { chats = [], memories = [], memorySuggestions = [], autoMemorySettings = {}, autoMemoryLastError = "", memoryEnabled = true } =
+    await chrome.storage.local.get(["chats", "memories", "memorySuggestions", "autoMemorySettings", "autoMemoryLastError", "memoryEnabled"]);
+  state.memoryEnabled = memoryEnabled;
   state.chats = chats;
   state.memories = memories;
   state.memorySuggestions = memorySuggestions;
@@ -845,7 +848,7 @@ async function init() {
   switchView("memory");
   if (new URLSearchParams(window.location.search).get("setup") === "api-key") {
     showApiKeySettings();
-    status("Add your API key and save changes, then choose your transfer destination again.");
+    status("Add your API key to enable automatic saving or semantic search.");
   } else switchMemoryTab("overview");
   syncChatTheme();
   setInterval(syncChatTheme, 2000);
@@ -861,13 +864,25 @@ async function init() {
     if (event.key === "Escape" && window.parent !== window)
       window.parent.postMessage({ type: "RELAY_CLOSE_MEMORY_CENTER" }, "*");
   });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab" || window.parent === window) return;
+    const controls = [...document.querySelectorAll("button, input, select, textarea, summary, a[href]")]
+      .filter((node) => !node.disabled && node.getClientRects().length && getComputedStyle(node).visibility !== "hidden");
+    const first = controls[0], last = controls.at(-1);
+    if ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first)?.focus();
+    }
+  });
+  if (window.parent !== window && new URLSearchParams(window.location.search).get("setup") !== "api-key") $("close-btn").focus();
+  $("dismiss-status").addEventListener("click", () => $("status").classList.remove("show"));
   $("capture-btn").addEventListener("click", captureCurrentTab);
   $("save-chat-btn").addEventListener("click", saveChat);
   $("delete-chat-btn").addEventListener("click", deleteChat);
   $("chat-select").addEventListener("change", (event) => selectChat(event.target.value));
   $("save-memory-btn").addEventListener("click", saveMemory);
   $("save-auto-settings-btn").addEventListener("click", saveAutoSettings);
-  for (const id of ["auto-memory-key", "auto-memory-enabled", "rag-enabled"])
+  for (const id of ["auto-memory-key", "auto-memory-enabled", "rag-enabled", "memory-enabled"])
     $(id).addEventListener("input", updateSettingsDirty);
   $("toggle-saving-btn").addEventListener("click", toggleMemorySaving);
   $("remove-auto-key-btn").addEventListener("click", removeAutoKey);
@@ -878,6 +893,12 @@ async function init() {
   for (const id of ["transcript", "chat-title"]) $(id).addEventListener("input", () => setSaveState("Unsaved conversation changes.", true));
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
+    if (changes.memoryEnabled) {
+      state.memoryEnabled = changes.memoryEnabled.newValue !== false;
+      $("memory-enabled").checked = state.memoryEnabled;
+      refreshPrompt();
+      renderRetrievalHint();
+    }
     if (changes.chats) { state.chats = changes.chats.newValue || []; renderChats(); }
     if (changes.memories) {
       state.memories = changes.memories.newValue || [];
