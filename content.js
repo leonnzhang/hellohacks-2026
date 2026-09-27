@@ -10,7 +10,7 @@
 
   function cleanText(node) {
     const clone = node.cloneNode(true);
-    clone.querySelectorAll("button, svg, script, style, [aria-hidden='true'], #relay-transfer-root").forEach((item) => item.remove());
+    clone.querySelectorAll("button, svg, script, style, [aria-hidden='true'], #relay-transfer-root, #relay-memory-center-root").forEach((item) => item.remove());
     clone.querySelectorAll("br").forEach((item) => item.replaceWith("\n"));
     clone.querySelectorAll("p, li, pre, blockquote, h1, h2, h3, h4").forEach((item) => item.append("\n"));
     return (clone.textContent || "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -186,7 +186,36 @@
   let transferHost;
   let transferPanel;
   let transferButton;
+  let memoryCenterHost;
   let mountQueued = false;
+  function closeMemoryCenter() {
+    memoryCenterHost?.remove();
+    memoryCenterHost = null;
+  }
+
+  function openMemoryCenter() {
+    if (memoryCenterHost) return closeMemoryCenter();
+    memoryCenterHost = document.createElement("div");
+    memoryCenterHost.id = "relay-memory-center-root";
+    memoryCenterHost.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;";
+    const shadow = memoryCenterHost.attachShadow({ mode: "open" });
+    shadow.innerHTML = `<style>
+      :host{all:initial}*{box-sizing:border-box}
+      .backdrop{position:absolute;inset:0;background:rgba(16,18,24,.18)}
+      .dialog{position:relative;width:min(780px,100%);height:min(580px,calc(100vh - 32px));overflow:hidden;border:1px solid rgba(255,255,255,.24);border-radius:20px;background:#fff;box-shadow:0 24px 72px rgba(0,0,0,.20),0 2px 12px rgba(0,0,0,.08)}
+      iframe{display:block;width:100%;height:100%;border:0}
+    </style><div class="backdrop"></div><div class="dialog" role="dialog" aria-modal="true" aria-label="Memory Center"><iframe title="Memory Center" src="${chrome.runtime.getURL("sidepanel.html")}"></iframe></div>`;
+    shadow.querySelector(".backdrop").addEventListener("click", closeMemoryCenter);
+    document.body.append(memoryCenterHost);
+  }
+  addEventListener("message", (event) => {
+    if (event.origin === `chrome-extension://${chrome.runtime.id}` &&
+        event.source === memoryCenterHost?.shadowRoot.querySelector("iframe")?.contentWindow &&
+        event.data?.type === "RELAY_CLOSE_MEMORY_CENTER") closeMemoryCenter();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && memoryCenterHost) closeMemoryCenter();
+  });
   function composerAnchor(composer) {
     let anchor = composer;
     for (let parent = composer.parentElement, depth = 0; parent && depth < 5; parent = parent.parentElement, depth++) {
@@ -283,19 +312,16 @@
           transferButton.setAttribute("aria-expanded", "false");
         }
       });
-      shadow.querySelector(".memory-center").addEventListener("click", async () => {
-        try {
-          const reply = await chrome.runtime.sendMessage({ type: "OPEN_MEMORY_CENTER" });
-          if (!reply?.ok) throw new Error(reply?.message || "Could not open Memory Center.");
-          transferPanel.hidden = true;
-          transferButton.setAttribute("aria-expanded", "false");
-        } catch (error) { shadow.querySelector(".status").textContent = error.message; }
+      shadow.querySelector(".memory-center").addEventListener("click", () => {
+        transferPanel.hidden = true;
+        transferButton.setAttribute("aria-expanded", "false");
+        openMemoryCenter();
       });
       shadow.querySelector(".copy").addEventListener("click", async (event) => {
         try {
           await navigator.clipboard.writeText(event.currentTarget.dataset.prompt || "");
           shadow.querySelector(".status").textContent = "Prompt copied. Paste it into the destination composer.";
-        } catch { shadow.querySelector(".status").textContent = "Copy failed. Open the side panel to copy the prompt."; }
+        } catch { shadow.querySelector(".status").textContent = "Copy failed. Select and copy the prompt manually."; }
       });
       document.body.append(transferHost);
     }
@@ -335,7 +361,7 @@
     const rows = shadow.querySelectorAll(".destination");
     const result = capture();
     if (result.captureMethod === "page text" || !result.messages.some((item) => item.role === "user")) {
-      status.textContent = "Could not read this chat. Use the side panel to review a capture.";
+      status.textContent = "Could not read this chat automatically. Try a different conversation.";
       return;
     }
     rows.forEach((row) => { row.disabled = true; });
@@ -391,6 +417,10 @@
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message.type === "TOGGLE_MEMORY_CENTER") {
+      openMemoryCenter();
+      sendResponse({ ok: true });
+    }
     if (message.type === "CAPTURE") sendResponse(capture());
     if (message.type === "GET_CHAT_THEME") sendResponse(chatTheme());
     if (message.type === "RESCAN_AUTO_MEMORY") {

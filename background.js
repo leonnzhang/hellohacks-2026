@@ -167,7 +167,7 @@ async function processInlineTransfer(payload, sender) {
     item && ["user", "assistant"].includes(item.role) && typeof item.text === "string" && item.text.trim()
   ).map((item) => ({ role: item.role, text: item.text.slice(0, 12000) })) : [];
   if (capture.captureMethod === "page text" || !messages.length) {
-    return { ok: false, message: "Could not identify chat messages here. Use the side panel to review a capture." };
+    return { ok: false, message: "Could not identify chat messages here. Try a different conversation." };
   }
   const { memories = [] } = await chrome.storage.local.get("memories");
   const chosen = globalThis.RELAY_TRANSFER.pickMemories(memories);
@@ -193,7 +193,6 @@ async function processInlineTransfer(payload, sender) {
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   chrome.contextMenus.create({
     id: MEMORY_MENU_ID,
     title: "Save selection as core memory",
@@ -205,6 +204,20 @@ chrome.runtime.onInstalled.addListener(() => {
       "https://gemini.google.com/*"
     ]
   });
+});
+
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab?.id || !supportedChatUrl(tab.url)) return;
+  try {
+    const reply = await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_MEMORY_CENTER" });
+    if (reply?.ok) return;
+  } catch {
+    /* Inject below when the tab has no current content script. */
+  }
+  try {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+    await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_MEMORY_CENTER" });
+  } catch { /* The tab may have navigated or closed. */ }
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -224,14 +237,6 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === "OPEN_MEMORY_CENTER") {
-    if (!sender.tab?.id || !supportedChatUrl(sender.tab.url)) return;
-    const opening = chrome.sidePanel.open({ tabId: sender.tab.id });
-    Promise.all([opening, chrome.storage.local.set({ panelView: "memory" })])
-      .then(() => sendResponse({ ok: true }))
-      .catch((error) => sendResponse({ ok: false, message: error.message }));
-    return true;
-  }
   if (message?.type === "INLINE_CONTEXT_STATUS") {
     chrome.storage.local.get("memories")
       .then(({ memories = [] }) => sendResponse({ count: globalThis.RELAY_TRANSFER.pickMemories(memories).length }))

@@ -10,11 +10,11 @@ The main product requirements are in [PRODUCT_BRIEF.md](PRODUCT_BRIEF.md). Keep 
 
 | File | Responsibility |
 | --- | --- |
-| `manifest.json` | MV3 permissions, supported hosts, service worker, side panel, content script. |
-| `background.js`, `memory-policy.js` | Opens the side panel, saves selected text, calls OpenAI for opt-in automatic memory, and defines the allowed categories. |
+| `manifest.json` | MV3 permissions, supported hosts, service worker, toolbar action, content script. |
+| `background.js`, `memory-policy.js` | Saves selected text, calls OpenAI for opt-in automatic memory, and defines the allowed categories. |
 | `content.js` | Reads visible chat messages, places the chat-native transfer control, samples theme values, and fills a destination composer. |
-| `transfer-core.js` | Shared core memory selection and handoff prompt construction for the inline flow and side panel. |
-| `sidepanel.html`, `sidepanel.css` | Conversation, memory, and handoff interface. |
+| `transfer-core.js` | Core memory selection and handoff prompt construction for the inline flow. |
+| `sidepanel.html`, `sidepanel.css` | Memory Center split view, sidebar, chart, and privacy controls. |
 | `sidepanel.js` | UI state, storage, prompt assembly, tab messaging, and destination flow. |
 | `prompts/handoff.json` | Wording for the generated **user** prompt. It is not a model system prompt. |
 | `tests/save-conversation.test.js` | Mocked Chrome-storage tests for creating and updating a conversation. |
@@ -32,17 +32,17 @@ autoMemoryProcessed: { [sourceUrl]: snapshotHash }
 autoMemoryLastError: string
 ```
 
-`sidepanel.js` sends `CAPTURE` to the active supported tab. `content.js` extracts role/text pairs using service-specific DOM selectors, then falls back to visible page text when needed. The panel formats the result into an editable, unsaved draft. **Save conversation** creates a new entry; choosing an existing entry changes the action to **Update conversation**. Save writes to `chats`, reads it back, and checks the saved ID and transcript before reporting success.
+`sidepanel.js` sends `CAPTURE` to the active supported tab. `content.js` extracts role/text pairs using service-specific DOM selectors, then falls back to visible page text when needed. The inline Transfer menu formats the detected messages into an editable destination draft. The older panel capture flow remains in code but its Handoff view is hidden for the demo. **Save conversation** creates a new entry; choosing an existing entry changes the action to **Update conversation**. Save writes to `chats`, reads it back, and checks the saved ID and transcript before reporting success.
 
-Memories can be entered in the Memory tab or by right-click selection on a supported page. With opt-in enabled, the content script sends a settled, visible conversation to the service worker. The worker asks OpenAI for facts in the fixed [core memory template](MEMORY_TEMPLATE.md), validates each category and user-message quote, and saves qualifying facts directly. The user can see the category reason and quote, then edit or delete the fact. Earlier pending suggestions from version 0.2 remain reviewable. Handoff includes up to three core memories. Older noncore or unscoped records and automatic records in retired categories remain visible but excluded until the user edits and saves one as core.
+Memories can be entered in Memory Center or by right-click selection on a supported page. With opt-in enabled, the content script sends a settled, visible conversation to the service worker. The worker asks OpenAI for facts in the fixed [core memory template](MEMORY_TEMPLATE.md), validates each category and user-message quote, and saves qualifying facts directly. The user can see the category reason and quote, then edit or delete the fact. Earlier pending suggestions from version 0.2 remain reviewable. Handoff includes up to three core memories. Older noncore or unscoped records and automatic records in retired categories remain visible but excluded until the user edits and saves one as core.
 
-The preview is assembled from `prompts/handoff.json`, automatically picked memories, the current transcript, and the next request. A transcript over 20,000 characters is shortened in the preview by retaining its beginning and end. **Open & fill** creates a destination tab and sends `INSERT_PROMPT` to its content script. The script locates a composer, inserts text, and checks its content. On an incomplete fill, the panel offers a clipboard fallback. Sending the message remains a user action.
+The read-only preview is assembled from `prompts/handoff.json`, automatically picked memories, and the current transcript. A transcript over 20,000 characters is shortened in the preview by retaining its beginning and end. **Open & fill** creates a destination tab and sends `INSERT_PROMPT` to its content script. The script locates a composer, inserts text, and checks its content. On an incomplete fill, the panel offers a clipboard fallback. The user sends the context, then writes the next request in the destination chat.
 
-The [chat-native UI](UI_DIRECTION.md) adds a small Transfer button beside a detected composer. Its menu asks the service worker to assemble the same prompt and open an editable destination draft. The Memory Center link opens the side panel on its Memory tab. The content script samples theme values from the active chat, and the panel uses them as CSS variables.
+The [chat-native UI](UI_DIRECTION.md) adds a small Transfer button beside a detected composer. Its menu asks the service worker to assemble the same prompt and open an editable destination draft. The Memory Center link and toolbar icon open the same centered overlay on supported chat tabs. The sidebar presents a live overview, saved memories, rules, and privacy details. The content script samples the active chat's light or dark theme.
 
 ## Permissions and privacy
 
-The extension uses `storage`, `tabs`, `sidePanel`, `contextMenus`, and `scripting`, with host access for ChatGPT, Claude, Gemini, and the OpenAI API listed in `manifest.json`. The service worker sets local-storage access to trusted extension contexts. Saved conversations and memories stay in the current Chrome profile; there is no sync. If automatic memory is enabled, visible chat messages are sent to OpenAI for extraction. Handoff content reaches a destination chat service only when the user sends the filled prompt there.
+The extension uses `storage`, `tabs`, `contextMenus`, and `scripting`, with host access for ChatGPT, Claude, Gemini, and the OpenAI API listed in `manifest.json`. The service worker sets local-storage access to trusted extension contexts. Saved conversations and memories stay in the current Chrome profile; there is no sync. If automatic memory is enabled, visible chat messages are sent to OpenAI for extraction. Handoff content reaches a destination chat service only when the user sends the filled prompt there. The user-facing data flow is summarized in [PRIVACY.md](PRIVACY.md).
 
 ## Verification status
 

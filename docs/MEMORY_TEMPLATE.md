@@ -32,4 +32,4 @@ Older records created before this core-only template stay in local storage. Reco
 
 ## Handoff rule
 
-A handoff includes up to three recent core records in its editable prompt. The current implementation uses recency, not semantic search or category ranking. If an older fact matters more, the user can edit it or adjust the prompt. Conflicting facts are not automatically reconciled; the model is asked to skip conflicts and the user can correct an existing record.
+A handoff includes up to three recent core records in its fixed context prompt. The current implementation uses recency, not semantic search or category ranking. If an older fact matters more, the user can edit the saved memories. Conflicting facts are not automatically reconciled; the model is asked to skip conflicts and the user can correct an existing record.

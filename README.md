@@ -9,22 +9,23 @@ A Chrome extension for two connected actions: carry a chat into another AI servi
 - [Automatic memory plan](docs/AUTO_MEMORY_PLAN.md): opt-in flow, privacy choices, limits, and verification.
 - [Core memory template](docs/MEMORY_TEMPLATE.md): the seven allowed categories, examples, exclusions, storage, and handoff rules.
 - [UI direction](docs/UI_DIRECTION.md): the chat-native transfer button, quick flow, and shared styling with Memory Center.
+- [Privacy notice](docs/PRIVACY.md): what stays in Chrome and when chat text is sent to another service.
 
 ## Install locally
 
 1. Open `chrome://extensions` in Chrome.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked** and select this directory.
-4. Pin **Relay Memory** and click its icon to open the side panel.
+4. Pin **Relay Memory**. On a supported chat tab, click its icon to open Memory Center in the page.
 
 ## Demo
 
-1. Open a ChatGPT, Claude, or Gemini conversation and click **Capture current tab**. This creates an unsaved draft. Review it, then click **Save conversation** to add a new entry to the saved conversations dropdown. Select an existing entry to edit it with **Update conversation**. If a site's page layout prevents capture, paste the conversation into the editor.
-2. In **Memory**, enter your own OpenAI API key and enable automatic memory. Visit a supported chat and wait for it to settle. Core facts grounded in your messages are saved automatically; inspect, edit, or delete them in the Memory tab. You can also save a core fact manually or use **Save selection as core memory** from a supported page's right-click menu.
-3. In **Handoff**, select the conversation, add the next question, and inspect the combined prompt. Up to three core memories are included automatically. Older noncore records stay visible for review but are excluded.
-4. Choose a destination and click **Open & fill**. The extension opens a new chat, fills its composer, and checks the resulting text. Review and send it yourself. If insertion is incomplete, the extension copies the prompt and tells you to replace the composer text by pasting it.
+1. Open a ChatGPT, Claude, or Gemini conversation and click **Transfer** beside the composer.
+2. Choose a destination. The extension opens a new chat with an editable context draft, including up to three core memories. Review and send it, then write your next message.
+3. Open **Memory Center** from the Transfer menu or extension icon. Use the left sidebar to see an overview, manage saved memories, review memory rules, and read Privacy & data. You can also save selected text with the page's right-click menu.
+4. To enable automatic memory, open **Privacy & data**, enter your own OpenAI API key, and turn on automatic saving. Core facts grounded in your messages are saved as supported chats settle.
 
-On supported chat pages, a small **Transfer** button also appears beside the composer. It opens a compact destination menu and prepares a draft directly from visible, role-labelled messages. The **Memory Center** link opens the side panel for memory review and controls. The inline control and side panel follow the active chat's font and colors.
+The **Memory Center** link and toolbar icon open the same centered overlay on supported chat tabs. Transfer stays beside the chat composer.
 
 ## Design notes
 

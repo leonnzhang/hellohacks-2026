@@ -11,6 +11,7 @@ function harness() {
   let ids = 0;
   let request;
   const chrome = {
+    action: { onClicked: { addListener() {} } },
     runtime: { onInstalled: { addListener() {} }, onMessage: { addListener() {} } },
     contextMenus: { onClicked: { addListener() {} } },
     storage: { local: {

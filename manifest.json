@@ -4,7 +4,7 @@
   "version": "0.7.1",
   "minimum_chrome_version": "116",
   "description": "Carry conversations and your saved memories between AI chats.",
-  "permissions": ["storage", "tabs", "sidePanel", "contextMenus", "scripting"],
+  "permissions": ["storage", "tabs", "contextMenus", "scripting"],
   "host_permissions": [
     "https://api.openai.com/*",
     "https://chatgpt.com/*",
@@ -13,8 +13,11 @@
     "https://gemini.google.com/*"
   ],
   "background": { "service_worker": "background.js" },
-  "action": { "default_title": "Open Relay Memory" },
-  "side_panel": { "default_path": "sidepanel.html" },
+  "action": { "default_title": "Open Memory Center" },
+  "web_accessible_resources": [{
+    "resources": ["sidepanel.html", "sidepanel.css", "sidepanel.js", "memory-policy.js", "transfer-core.js", "prompts/handoff.json"],
+    "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*", "https://claude.ai/*", "https://gemini.google.com/*"]
+  }],
   "content_scripts": [
     {
       "matches": [

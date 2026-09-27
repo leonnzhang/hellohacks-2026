@@ -32,7 +32,6 @@ function buildPrompt() {
   if (!handoffTemplate) return "";
   return globalThis.RELAY_TRANSFER.buildPrompt({
     transcript: $("transcript").value,
-    nextRequest: $("next-request").value,
     memories: pickMemories(state.memories),
     template: handoffTemplate
   });
@@ -42,7 +41,7 @@ async function loadHandoffTemplate() {
   const response = await fetch(chrome.runtime.getURL("prompts/handoff.json"));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const template = await response.json();
-  for (const field of ["intro", "separator", "memoryHeading", "conversationHeading", "nextRequestHeading", "emptyNextRequest", "truncationNotice"]) {
+  for (const field of ["intro", "separator", "memoryHeading", "conversationHeading", "truncationNotice"]) {
     if (typeof template[field] !== "string") throw new Error(`Missing template field: ${field}`);
   }
   return template;
@@ -53,7 +52,7 @@ function refreshPrompt() {
   const chosen = pickMemories(state.memories);
   const count = chosen.length;
   $("auto-memory-summary").textContent = count
-    ? `${count} core ${count === 1 ? "memory" : "memories"} included automatically. Review the prompt below.`
+    ? `${count} core ${count === 1 ? "memory" : "memories"} included automatically.`
     : "No core memories saved yet. You can manage memories in the Memory tab.";
 }
 
@@ -67,9 +66,40 @@ function setSaveState(message, unsaved = false) {
 }
 
 function switchView(view) {
-  for (const button of document.querySelectorAll(".tab")) button.classList.toggle("active", button.dataset.view === view);
-  $("handoff-view").classList.toggle("hidden", view !== "handoff");
-  $("memory-view").classList.toggle("hidden", view !== "memory");
+  $("handoff-view").classList.add("hidden");
+  $("memory-view").classList.remove("hidden");
+}
+
+function switchMemoryTab(tab) {
+  for (const button of document.querySelectorAll("[data-memory-tab]")) {
+    const active = button.dataset.memoryTab === tab;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  }
+  for (const name of ["overview", "saved", "rules", "privacy"])
+    $(`${name}-panel`).classList.toggle("hidden", name !== tab);
+  document.querySelector(".workspace main").scrollTop = 0;
+}
+
+function renderOverview() {
+  const memories = state.memories;
+  const automatic = memories.filter((memory) => memory.origin === "automatic").length;
+  const manual = memories.filter((memory) => memory.origin === "manual").length;
+  const older = memories.length - automatic - manual;
+  const ready = memories.filter((memory) => globalThis.RELAY_TRANSFER.isEligibleMemory(memory)).length;
+  $("overview-total").textContent = String(memories.length);
+  $("overview-ready").textContent = String(ready);
+  $("overview-auto").textContent = String(automatic);
+  $("manual-count").textContent = String(manual);
+  $("automatic-count").textContent = String(automatic);
+  $("older-count").textContent = String(older);
+  $("manual-bar").style.width = `${memories.length ? manual / memories.length * 100 : 0}%`;
+  $("automatic-bar").style.width = `${memories.length ? automatic / memories.length * 100 : 0}%`;
+  $("older-bar").style.width = `${memories.length ? older / memories.length * 100 : 0}%`;
+  $("chart-caption").textContent = memories.length
+    ? "Based on memories stored in this browser."
+    : "Add a memory to see your overview.";
 }
 
 async function syncChatTheme() {
@@ -81,13 +111,6 @@ async function syncChatTheme() {
     const root = document.documentElement;
     root.dataset.themeDark = String(!!theme.dark);
     root.dataset.sourceService = theme.service || "";
-    for (const [name, value] of Object.entries({
-      "--ui-bg": theme.background, "--ui-surface": theme.surface,
-      "--ui-text": theme.text, "--ui-muted": theme.muted,
-      "--ui-border": theme.border, "--ui-accent": theme.accent,
-      "--ui-accent-text": theme.dark ? "#17202a" : "#ffffff",
-      "--ui-font": theme.fontFamily, "--ui-radius": theme.radius
-    })) root.style.setProperty(name, value);
   } catch { /* Use the neutral fallback outside a supported chat. */ }
 }
 
@@ -138,8 +161,9 @@ function renderMemories() {
   const list = $("memory-list");
   list.replaceChildren();
   $("memory-count").textContent = String(state.memories.length);
+  renderOverview();
   if (!state.memories.length) {
-    list.append(makeEmpty("Memories you save will appear here."));
+    list.append(makeEmpty("No memories yet. Add one below."));
     return;
   }
   for (const memory of state.memories) {
@@ -154,23 +178,24 @@ function renderMemories() {
     }
     const body = document.createElement("p");
     body.textContent = memory.text;
-    if (category) {
-      const why = document.createElement("p");
-      why.className = "suggestion-source";
-      why.textContent = `Why saved: ${category.why}`;
-      item.append(body, why);
-    } else item.append(body);
-    if (memory.sourceQuote) {
-      const source = document.createElement("p");
-      source.className = "suggestion-source";
-      source.textContent = `From ${memory.sourceTitle || "conversation"}: “${memory.sourceQuote}”`;
+    item.append(body);
+    if (category || memory.sourceQuote) {
+      const source = document.createElement("details");
+      source.className = "memory-source";
+      const summary = document.createElement("summary");
+      summary.textContent = "Why saved";
+      const detail = document.createElement("p");
+      detail.textContent = memory.sourceQuote
+        ? `From ${memory.sourceTitle || "a chat"}: “${memory.sourceQuote}”`
+        : category.why;
+      source.append(summary, detail);
       item.append(source);
     }
     if (memory.scope !== "global" || memory.project ||
         (memory.origin === "automatic" && !category)) {
       const note = document.createElement("p");
       note.className = "suggestion-source";
-      note.textContent = "Older excluded entry. Edit and save it as core memory if it fits the current template, or delete it.";
+      note.textContent = "Not used in transfers.";
       item.append(note);
     }
     const actions = document.createElement("div");
@@ -190,7 +215,8 @@ function renderMemories() {
 
 function renderAutoSettings() {
   $("auto-memory-enabled").checked = !!state.autoMemorySettings.enabled;
-  $("key-state").textContent = state.autoMemorySettings.apiKey ? "API key saved in this Chrome profile." : "No key saved.";
+  $("auto-memory-status").textContent = state.autoMemorySettings.enabled ? "On" : "Off";
+  $("key-state").textContent = state.autoMemorySettings.apiKey ? "Key saved." : "No key saved.";
   $("auto-memory-error").textContent = state.autoMemoryLastError ? `Last scan failed: ${state.autoMemoryLastError}` : "";
   $("auto-memory-error").classList.toggle("hidden", !state.autoMemoryLastError);
 }
@@ -302,10 +328,7 @@ async function removeAutoKey() {
 function editMemory(memory) {
   state.editingMemoryId = memory.id;
   $("memory-text").value = memory.text;
-  const retired = memory.origin === "automatic" &&
-    !globalThis.MEMORY_POLICY.categories.some((entry) => entry.id === memory.category);
-  $("save-memory-btn").textContent = memory.scope === "global" && !memory.project && !retired
-    ? "Save changes" : "Save as core memory";
+  $("save-memory-btn").textContent = "Save changes";
   $("cancel-edit-btn").classList.remove("hidden");
   $("memory-text").focus();
 }
@@ -460,9 +483,9 @@ function selectChat(id) {
 }
 
 async function copyPrompt() {
-  const prompt = $("prompt-preview").value.trim();
+  const prompt = buildPrompt();
   if (!prompt) {
-    status("Add a conversation, memory, or next request first.", true);
+    status("Add a conversation or memory first.", true);
     return false;
   }
   try {
@@ -470,6 +493,7 @@ async function copyPrompt() {
     status("Prompt copied. Paste it into any chat.");
     return true;
   } catch {
+    $("preview-details").open = true;
     $("prompt-preview").focus();
     $("prompt-preview").select();
     status("Select and copy the prompt manually.", true);
@@ -478,7 +502,7 @@ async function copyPrompt() {
 }
 
 async function openAndFill() {
-  const prompt = $("prompt-preview").value.trim();
+  const prompt = buildPrompt();
   if (!prompt) return status("Add context to the prompt first.", true);
   const destination = $("destination").value;
   $("continue-btn").disabled = true;
@@ -490,7 +514,7 @@ async function openAndFill() {
       try {
         const response = await chrome.tabs.sendMessage(tab.id, { type: "INSERT_PROMPT", text: prompt });
         if (response?.ok) {
-          status(`Context filled in ${destination}. Review it, then send.`);
+          status(`Context filled in ${destination}. Send it, then write your next message there.`);
           return;
         }
         if (response?.reason === "Text mismatch") break;
@@ -513,8 +537,8 @@ async function init() {
   } catch (error) {
     status(`Handoff template could not load: ${error.message}`, true);
   }
-  const { chats = [], memories = [], memorySuggestions = [], autoMemorySettings = {}, autoMemoryLastError = "", panelView = "handoff" } =
-    await chrome.storage.local.get(["chats", "memories", "memorySuggestions", "autoMemorySettings", "autoMemoryLastError", "panelView"]);
+  const { chats = [], memories = [], memorySuggestions = [], autoMemorySettings = {}, autoMemoryLastError = "" } =
+    await chrome.storage.local.get(["chats", "memories", "memorySuggestions", "autoMemorySettings", "autoMemoryLastError"]);
   state.chats = chats;
   state.memories = memories;
   state.memorySuggestions = memorySuggestions;
@@ -526,12 +550,20 @@ async function init() {
   renderSuggestions();
   renderAutoSettings();
   refreshPrompt();
-  switchView(panelView === "memory" ? "memory" : "handoff");
+  switchView("memory");
+  switchMemoryTab("overview");
   syncChatTheme();
   chrome.tabs.onActivated.addListener(syncChatTheme);
-  for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click", () => {
-    switchView(tab.dataset.view);
-    chrome.storage.local.set({ panelView: tab.dataset.view });
+  for (const button of document.querySelectorAll("[data-memory-tab]"))
+    button.addEventListener("click", () => switchMemoryTab(button.dataset.memoryTab));
+  $("view-memories-btn").addEventListener("click", () => switchMemoryTab("saved"));
+  $("close-btn").addEventListener("click", () => {
+    if (window.parent !== window) window.parent.postMessage({ type: "RELAY_CLOSE_MEMORY_CENTER" }, "*");
+    else window.close();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && window.parent !== window)
+      window.parent.postMessage({ type: "RELAY_CLOSE_MEMORY_CENTER" }, "*");
   });
   $("capture-btn").addEventListener("click", captureCurrentTab);
   $("save-chat-btn").addEventListener("click", saveChat);
@@ -543,11 +575,10 @@ async function init() {
   $("cancel-edit-btn").addEventListener("click", clearMemoryForm);
   $("copy-btn").addEventListener("click", copyPrompt);
   $("continue-btn").addEventListener("click", openAndFill);
-  for (const id of ["transcript", "next-request"]) $(id).addEventListener("input", refreshPrompt);
+  $("transcript").addEventListener("input", refreshPrompt);
   for (const id of ["transcript", "chat-title"]) $(id).addEventListener("input", () => setSaveState("Unsaved conversation changes.", true));
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
-    if (changes.panelView) switchView(changes.panelView.newValue === "memory" ? "memory" : "handoff");
     if (changes.chats) { state.chats = changes.chats.newValue || []; renderChats(); }
     if (changes.memories) {
       state.memories = changes.memories.newValue || [];

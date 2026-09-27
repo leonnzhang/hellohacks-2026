@@ -10,7 +10,7 @@ function panelHarness() {
   const element = (id) => {
     if (!elements.has(id)) {
       elements.set(id, {
-        value: "", textContent: "", options: [],
+        value: "", textContent: "", options: [], style: {},
         classList: { add() {}, remove() {}, toggle() {} },
         replaceChildren(...options) { this.options = options; },
         add(option) { this.options.push(option); }
@@ -76,6 +76,23 @@ test("Save creates a visible entry; Update edits it; a new draft creates another
   assert.match(element("chat-select").options[1].label, /Second chat/);
 });
 
+test("overview chart uses saved memory counts and transfer eligibility", () => {
+  const { context, element } = panelHarness();
+  const state = vm.runInContext("state", context);
+  state.memories = [
+    { text: "I prefer short answers.", scope: "global", origin: "manual" },
+    { text: "I enjoy hiking.", scope: "global", origin: "automatic", category: "hobbies_interests" },
+    { text: "An old project fact.", scope: "topic" }
+  ];
+  vm.runInContext("renderOverview()", context);
+  assert.equal(element("overview-total").textContent, "3");
+  assert.equal(element("overview-ready").textContent, "2");
+  assert.equal(element("overview-auto").textContent, "1");
+  assert.equal(element("manual-count").textContent, "1");
+  assert.equal(element("older-count").textContent, "1");
+  assert.equal(element("manual-bar").style.width, "33.33333333333333%");
+});
+
 test("Capture stays unsaved until Save conversation is clicked", async () => {
   const { context, element, storage } = panelHarness();
   context.chrome.tabs = {
@@ -110,7 +127,6 @@ test("handoff includes core memory and excludes older noncore records", () => {
     { id: "other", text: "My garden has tomatoes.", scope: "topic" },
     { id: "unscoped", text: "An older memory with no scope." }
   ];
-  element("next-request").value = "Help with the hackathon extension";
   vm.runInContext("refreshPrompt()", context);
   assert.match(element("prompt-preview").value, /I prefer concise answers/);
   assert.doesNotMatch(element("prompt-preview").value, /hackathon project/);
@@ -118,5 +134,6 @@ test("handoff includes core memory and excludes older noncore records", () => {
   assert.doesNotMatch(element("prompt-preview").value, /older memory/);
   assert.doesNotMatch(element("prompt-preview").value, /learning Rust/);
   assert.match(element("prompt-preview").value, /I enjoy hiking/);
+  assert.doesNotMatch(element("prompt-preview").value, /MY NEXT REQUEST|Add your next request/);
   assert.match(element("auto-memory-summary").textContent, /2 core memories/);
 });

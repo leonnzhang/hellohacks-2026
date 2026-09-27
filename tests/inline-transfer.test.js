@@ -14,6 +14,7 @@ test("inline transfer opens an editable draft with only active core memories", a
   let openedUrl = "";
   let filledPrompt = "";
   const chrome = {
+    action: { onClicked: { addListener() {} } },
     runtime: {
       getURL: (file) => `chrome-extension://test/${file}`,
       onInstalled: { addListener() {} },
@@ -50,7 +51,8 @@ test("inline transfer opens an editable draft with only active core memories", a
   assert.match(filledPrompt, /I enjoy hiking/);
   assert.doesNotMatch(filledPrompt, /learning Rust/);
   assert.match(filledPrompt, /USER:\nHelp me plan the next step/);
-  assert.match(filledPrompt, /MY NEXT REQUEST/);
+  assert.doesNotMatch(filledPrompt, /MY NEXT REQUEST|Add your next request/);
+  assert.match(filledPrompt, /wait for my next request/i);
 
   const sameService = await transfer({ destination: "ChatGPT", capture }, sender);
   assert.equal(sameService.ok, true);

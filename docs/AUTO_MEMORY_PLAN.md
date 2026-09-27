@@ -25,7 +25,7 @@ The seven core categories, examples, exclusions, storage fields, and handoff rul
 
 - Only messages currently rendered in newly visited supported tabs can be read. Service page changes may break capture, and older unloaded turns are unavailable.
 - A settled page can change again later, so a conversation may incur another request after new messages arrive. Fingerprints prevent repeat calls for the same snapshot.
-- Model output can be wrong even with source checks. The Memory tab exposes provenance and deletion, and the handoff prompt stays editable. Evaluate quality with harmless example conversations, including jokes, corrections, temporary facts, and sensitive details.
+- Model output can be wrong even with source checks. The Memory tab exposes provenance and deletion, and the handoff context has a read-only preview. Evaluate quality with harmless example conversations, including jokes, corrections, temporary facts, and sensitive details.
 - Facts tied to one task are intentionally excluded from core memory. The extension does not try to infer that they apply everywhere.
 
 ## Verification
