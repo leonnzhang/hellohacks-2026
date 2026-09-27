@@ -168,11 +168,12 @@
     const pageBackground = [document.body, document.documentElement]
       .map((node) => getComputedStyle(node).backgroundColor).find(opaque) || surface;
     const rgb = surface.match(/\d+(?:\.\d+)?/g)?.slice(0, 3).map(Number) || [255, 255, 255];
-    const dark = (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722) < 130;
+    const explicitTheme = `${document.documentElement.dataset.theme || ""} ${document.body.dataset.theme || ""}`;
+    const dark = /dark/i.test(explicitTheme) || document.documentElement.classList.contains("dark") ||
+      document.body.classList.contains("dark") ||
+      (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722) < 130;
     const radius = Math.min(20, Math.max(12, parseFloat(getComputedStyle(composer?.parentElement || document.body).borderRadius) || 14));
-    const accent = service === "Claude" ? (dark ? "#e6a681" : "#a04f2d")
-      : service === "Gemini" ? (dark ? "#9bbcff" : "#315fbe")
-        : (dark ? "#dce3eb" : "#26313d");
+    const accent = dark ? "#8bb4ff" : "#3569d4";
     return {
       service, dark, surface, background: pageBackground, radius: `${radius}px`,
       text: style.color || (dark ? "#f6f7f8" : "#202124"),
@@ -195,16 +196,17 @@
 
   function openMemoryCenter() {
     if (memoryCenterHost) return closeMemoryCenter();
+    const dark = chatTheme().dark;
     memoryCenterHost = document.createElement("div");
     memoryCenterHost.id = "relay-memory-center-root";
     memoryCenterHost.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;";
     const shadow = memoryCenterHost.attachShadow({ mode: "open" });
     shadow.innerHTML = `<style>
       :host{all:initial}*{box-sizing:border-box}
-      .backdrop{position:absolute;inset:0;background:rgba(16,18,24,.18)}
-      .dialog{position:relative;width:min(780px,100%);height:min(580px,calc(100vh - 32px));overflow:hidden;border:1px solid rgba(255,255,255,.24);border-radius:20px;background:#fff;box-shadow:0 24px 72px rgba(0,0,0,.20),0 2px 12px rgba(0,0,0,.08)}
+      .backdrop{position:absolute;inset:0;background:rgba(16,18,24,.32)}
+      .dialog{position:relative;width:min(780px,100%);height:min(580px,calc(100vh - 32px));overflow:hidden;border:1px solid ${dark ? "#44464f" : "#e6e7eb"};border-radius:20px;background:${dark ? "#202126" : "#fff"};box-shadow:0 24px 72px rgba(0,0,0,.20),0 2px 12px rgba(0,0,0,.08)}
       iframe{display:block;width:100%;height:100%;border:0}
-    </style><div class="backdrop"></div><div class="dialog" role="dialog" aria-modal="true" aria-label="Memory Center"><iframe title="Memory Center" src="${chrome.runtime.getURL("sidepanel.html")}"></iframe></div>`;
+    </style><div class="backdrop"></div><div class="dialog" role="dialog" aria-modal="true" aria-label="Memory Center"><iframe title="Memory Center" src="${chrome.runtime.getURL(`sidepanel.html?theme=${dark ? "dark" : "light"}`)}"></iframe></div>`;
     shadow.querySelector(".backdrop").addEventListener("click", closeMemoryCenter);
     document.body.append(memoryCenterHost);
   }
@@ -241,9 +243,9 @@
       shadow.innerHTML = `<style>
         :host{all:initial;color:var(--rt-text);font-family:var(--rt-font);font-size:13px}
         *{box-sizing:border-box}button{font:inherit;cursor:pointer}button:disabled{cursor:wait;opacity:.55}button:focus-visible{outline:2px solid var(--rt-accent);outline-offset:2px}
-        .launcher{display:inline-flex;align-items:center;gap:8px;min-height:37px;padding:5px 10px 5px 5px;border:1px solid var(--rt-border);border-radius:999px;background:var(--rt-surface);color:var(--rt-text);box-shadow:0 3px 12px #0000001f;white-space:nowrap;transition:box-shadow .15s,transform .15s}
-        .launcher:hover{box-shadow:0 6px 18px #00000026;transform:translateY(-1px)}
-        .mark{display:grid;place-items:center;width:26px;height:26px;flex:none;border-radius:50%;background:var(--rt-accent);color:var(--rt-accent-text);font-size:15px;line-height:1}
+        .launcher{display:inline-flex;align-items:center;gap:8px;min-height:37px;padding:5px 11px 5px 5px;border:1px solid var(--rt-border);border-radius:10px;background:var(--rt-surface);color:var(--rt-text);box-shadow:0 1px 2px #00000012;white-space:nowrap;transition:background .15s,border-color .15s}
+        .launcher:hover,.launcher[aria-expanded="true"]{border-color:var(--rt-accent);background:color-mix(in srgb,var(--rt-accent) 7%,var(--rt-surface))}
+        .mark{display:grid;place-items:center;width:26px;height:26px;flex:none;border-radius:8px;background:color-mix(in srgb,var(--rt-accent) 17%,var(--rt-surface));color:var(--rt-accent);font-size:17px;font-weight:700;line-height:1}
         .label{font-size:12px;font-weight:700;letter-spacing:-.01em}.chevron{margin-left:1px;color:var(--rt-muted);font-size:13px}
         .menu{position:absolute;right:0;bottom:calc(100% + 9px);width:min(322px,calc(100vw - 20px));max-height:min(440px,calc(100vh - 24px));overflow:auto;padding:14px;border:1px solid var(--rt-border);border-radius:max(16px,var(--rt-radius));background:var(--rt-surface);color:var(--rt-text);box-shadow:0 16px 42px #0000002e}
         .menu.below{top:calc(100% + 9px);bottom:auto}.menu[hidden],.copy[hidden]{display:none}
@@ -259,8 +261,8 @@
         .foot button,.copy{padding:0;border:0;background:none;color:var(--rt-accent);font-size:11px;font-weight:700;white-space:nowrap}.foot button:hover,.copy:hover{text-decoration:underline}
         .status{margin:9px 2px 0;color:var(--rt-muted);font-size:11px;line-height:1.45}.status:empty{display:none}.copy{margin:8px 2px 0}
       </style>
-      <button type="button" class="launcher" aria-haspopup="dialog" aria-expanded="false" aria-label="Transfer this chat"><span class="mark" aria-hidden="true">⇄</span><span class="label">Transfer</span><span class="chevron" aria-hidden="true">⌄</span></button>
-      <section class="menu" role="dialog" aria-label="Transfer chat" hidden><div class="head"><p class="eyebrow">Chat transfer</p><strong>Continue this conversation</strong><small>Open a new chat with transfer context. Choose core memories separately when sending.</small></div><div class="destinations"></div><div class="foot"><span class="context-count">Checking context…</span><button type="button" class="memory-center">Memory Center →</button></div><p class="status" role="status" aria-live="polite"></p><button type="button" class="copy" hidden>Copy prepared prompt</button></section>`;
+      <button type="button" class="launcher" aria-haspopup="dialog" aria-expanded="false" aria-label="Transfer this chat"><span class="mark" aria-hidden="true">↗</span><span class="label">Transfer</span><span class="chevron" aria-hidden="true">⌄</span></button>
+      <section class="menu" role="dialog" aria-label="Transfer chat" hidden><div class="head"><p class="eyebrow">Chat transfer</p><strong>Continue this conversation</strong><small>Open a new chat with this conversation ready as context.</small></div><div class="destinations"></div><div class="foot"><span class="context-count">Checking context…</span><button type="button" class="memory-center">Memory Center →</button></div><p class="status" role="status" aria-live="polite"></p><button type="button" class="copy" hidden>Copy prepared prompt</button></section>`;
       transferButton = shadow.querySelector(".launcher");
       transferPanel = shadow.querySelector(".menu");
       const list = shadow.querySelector(".destinations");
@@ -296,7 +298,7 @@
           const messageCount = result.messages.filter((item) => ["user", "assistant"].includes(item.role)).length;
           try {
             const { count = 0, ragEnabled = false } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
-            shadow.querySelector(".context-count").textContent = `${messageCount} messages to transfer · ${count} core ${count === 1 ? "memory" : "memories"} available separately${ragEnabled ? " · semantic search on" : ""}`;
+            shadow.querySelector(".context-count").textContent = `${messageCount} messages · ${count} ${count === 1 ? "memory" : "memories"} available${ragEnabled ? " · search on" : ""}`;
           } catch { shadow.querySelector(".context-count").textContent = `${messageCount} messages`; }
         }
       });
@@ -329,7 +331,8 @@
     const theme = chatTheme();
     for (const [name, value] of Object.entries({
       "--rt-surface": theme.surface, "--rt-text": theme.text, "--rt-muted": theme.muted,
-      "--rt-border": theme.border, "--rt-accent": theme.accent, "--rt-font": theme.fontFamily,
+      "--rt-border": theme.border, "--rt-accent": theme.accent,
+      "--rt-font": "Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
       "--rt-radius": theme.radius, "--rt-accent-text": theme.dark ? "#17202a" : "#ffffff"
     })) transferHost.style.setProperty(name, value);
     const rect = composerAnchor(composer).getBoundingClientRect();
@@ -369,7 +372,7 @@
     status.textContent = `Opening ${destination}…`;
     try {
       const reply = await chrome.runtime.sendMessage({ type: "INLINE_TRANSFER", destination, capture: result });
-      status.textContent = reply?.ok ? `Chat ready in ${destination}. ${reply.count || 0} memories and ${reply.retrieved || 0} saved excerpts included.${reply.ragError ? ` Search issue: ${reply.ragError}` : ""} Review context when sending.` :
+      status.textContent = reply?.ok ? `Chat ready in ${destination}. Your context will be added when you send your first message.` :
         (reply?.message || "Transfer failed.");
       if (reply?.prompt) {
         copy.dataset.prompt = reply.prompt;
@@ -380,10 +383,90 @@
   }
 
   let autoTimer;
+  let autoFirstChangeAt = 0;
   let lastAutoSignature = "";
   let autoSending = false;
+  let autoMemoryToast = null;
+  let autoMemoryToastTimer = null;
+  let lastNotifiedMemoryIds = "";
+  let lastAlreadySavedText = "";
+  function showAlreadySavedToast(text) {
+    if (!text || text === lastAlreadySavedText) return;
+    lastAlreadySavedText = text;
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "status");
+    toast.style.cssText = "position:fixed;right:18px;bottom:82px;z-index:2147483647;width:min(340px,calc(100vw - 36px));padding:12px 14px;border-radius:12px;background:#26313d;color:#fff;box-shadow:0 8px 24px #0004;font:12px/1.4 system-ui,sans-serif";
+    toast.textContent = "Relay already saved this memory.";
+    document.body.append(toast);
+    setTimeout(() => toast.remove(), 5000);
+  }
+  function showAutoMemoryToast(saved) {
+    if (!Array.isArray(saved) || !saved.length) return;
+    const ids = saved.map((item) => item.id).join("|");
+    if (ids === lastNotifiedMemoryIds) return;
+    lastNotifiedMemoryIds = ids;
+    autoMemoryToast?.remove();
+    clearInterval(autoMemoryToastTimer);
+    const toast = document.createElement("div");
+    autoMemoryToast = toast;
+    toast.setAttribute("role", "status");
+    toast.style.cssText = "position:fixed;right:18px;bottom:82px;z-index:2147483647;width:min(340px,calc(100vw - 36px));padding:12px 14px;border-radius:12px;background:#26313d;color:#fff;box-shadow:0 8px 24px #0004;font:12px/1.4 system-ui,sans-serif";
+    const title = document.createElement("strong");
+    title.textContent = saved.length === 1 ? "Memory saved" : `${saved.length} memories saved`;
+    const detail = document.createElement("p");
+    detail.style.cssText = "margin:5px 0 9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d5dce5";
+    detail.textContent = saved.length === 1 ? saved[0].text : `${saved[0].text} and ${saved.length - 1} more`;
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px";
+    const countdown = document.createElement("span");
+    countdown.style.color = "#d5dce5";
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.textContent = "Undo";
+    undo.style.cssText = "border:0;background:none;color:#9fc5ff;font:700 12px system-ui,sans-serif;cursor:pointer;padding:0";
+    const deadline = Date.now() + 10000;
+    const close = () => {
+      clearInterval(autoMemoryToastTimer);
+      autoMemoryToastTimer = null;
+      toast.remove();
+      if (autoMemoryToast === toast) autoMemoryToast = null;
+    };
+    const tick = () => {
+      const seconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      countdown.textContent = `Undo available for ${seconds}s`;
+      if (!seconds) close();
+    };
+    undo.addEventListener("click", async () => {
+      undo.disabled = true;
+      try {
+        const result = await chrome.runtime.sendMessage({ type: "UNDO_AUTO_MEMORIES", ids: saved.map((item) => item.id) });
+        if (!result?.ok) throw new Error("Undo was unavailable.");
+        title.textContent = saved.length === 1 ? "Memory removed" : "Memories removed";
+        detail.textContent = "You can still add or edit memories in Relay.";
+        actions.remove();
+        clearInterval(autoMemoryToastTimer);
+        setTimeout(close, 2000);
+      } catch {
+        undo.disabled = false;
+        detail.textContent = "Could not undo. Open Relay to remove the memory.";
+      }
+    });
+    actions.append(countdown, undo);
+    toast.append(title, detail, actions);
+    document.body.append(toast);
+    tick();
+    autoMemoryToastTimer = setInterval(tick, 1000);
+  }
+  function showAutoMemoryError() {
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "status");
+    toast.style.cssText = "position:fixed;right:18px;bottom:82px;z-index:2147483647;width:min(340px,calc(100vw - 36px));padding:12px 14px;border-radius:12px;background:#26313d;color:#fff;box-shadow:0 8px 24px #0004;font:12px/1.4 system-ui,sans-serif";
+    toast.textContent = "Relay could not save a memory. Check Privacy & data for the error.";
+    document.body.append(toast);
+    setTimeout(() => toast.remove(), 6000);
+  }
   async function sendAutoCapture() {
-    if (autoSending) return;
+    if (autoSending) { scheduleAutoCapture(5000); return; }
     autoSending = true;
     try {
       const status = await chrome.runtime.sendMessage({ type: "AUTO_MEMORY_STATUS" });
@@ -394,15 +477,25 @@
       const signature = result.url + JSON.stringify(result.messages);
       if (signature === lastAutoSignature) return;
       const reply = await chrome.runtime.sendMessage({ type: "AUTO_MEMORY_CAPTURE", capture: result });
-      if (["processed", "unchanged", "error"].includes(reply?.status)) lastAutoSignature = signature;
+      if (["processed", "unchanged", "already_saved", "error"].includes(reply?.status)) lastAutoSignature = signature;
+      if (reply?.status === "processed" && reply.saved?.length) showAutoMemoryToast(reply.saved);
+      if (reply?.status === "already_saved") showAlreadySavedToast(reply.text);
+      if (reply?.status === "error") showAutoMemoryError();
       if (reply?.status === "busy") scheduleAutoCapture(15000);
     } catch { /* Extension may have been reloaded while this tab was open. */ }
     finally { autoSending = false; }
   }
 
-  function scheduleAutoCapture(delay = 15000) {
+  function scheduleAutoCapture(delay = 5000) {
+    const now = Date.now();
+    if (!autoFirstChangeAt) autoFirstChangeAt = now;
+    const wait = Math.max(0, Math.min(delay, 20000 - (now - autoFirstChangeAt)));
     clearTimeout(autoTimer);
-    autoTimer = setTimeout(() => { autoTimer = null; sendAutoCapture(); }, delay);
+    autoTimer = setTimeout(() => {
+      autoTimer = null;
+      autoFirstChangeAt = 0;
+      sendAutoCapture();
+    }, wait);
   }
 
   if (document.body) {
@@ -423,6 +516,14 @@
     }
     if (message.type === "CAPTURE") sendResponse(capture());
     if (message.type === "GET_CHAT_THEME") sendResponse(chatTheme());
+    if (message.type === "AUTO_MEMORY_SAVED") {
+      showAutoMemoryToast(message.saved);
+      sendResponse({ ok: true });
+    }
+    if (message.type === "AUTO_MEMORY_ALREADY_SAVED") {
+      showAlreadySavedToast(message.text);
+      sendResponse({ ok: true });
+    }
     if (message.type === "RESCAN_AUTO_MEMORY") {
       lastAutoSignature = "";
       scheduleAutoCapture(500);

@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-test("inline transfer opens a blank chat and arms a reviewed first send", async () => {
+test("inline transfer opens a blank chat and arms context for the first send", async () => {
   const template = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "prompts", "handoff.json"), "utf8"));
   const stored = { memories: [
     { text: "I have a peanut allergy.", scope: "global", origin: "automatic", category: "health_context" },
@@ -54,7 +54,7 @@ test("inline transfer opens a blank chat and arms a reviewed first send", async 
   };
   const result = await transfer({ destination: "Claude", capture }, sender);
   assert.equal(result.ok, true);
-  assert.equal(result.count, 0);
+  assert.equal(result.destination, "Claude");
   assert.equal(openedUrl, "https://claude.ai/new");
   const armed = session["pendingTransfer:8"];
   assert.doesNotMatch(armed.prompt, /I have a peanut allergy/);

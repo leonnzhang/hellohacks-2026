@@ -248,6 +248,11 @@ async function previewRetrieval(event) {
 }
 
 async function syncChatTheme() {
+  const embeddedTheme = new URLSearchParams(location.search).get("theme");
+  if (embeddedTheme === "dark" || embeddedTheme === "light") {
+    document.documentElement.dataset.themeDark = String(embeddedTheme === "dark");
+    return;
+  }
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
@@ -580,15 +585,17 @@ async function saveMemory() {
 }
 
 async function deleteMemory(id) {
-  const { memories = [] } = await chrome.storage.local.get("memories");
-  const remaining = memories.filter((memory) => memory.id !== id);
-  await chrome.storage.local.set({ memories: remaining });
-  await syncRagAfterSave();
-  state.memories = remaining;
-  renderMemories();
-  refreshPrompt();
-  if (state.editingMemoryId === id) clearMemoryForm();
-  status("Memory deleted.");
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "DELETE_MEMORY", id });
+    if (!result?.ok) throw new Error(result?.reason || "Could not verify deletion.");
+    state.memories = result.memories;
+    renderMemories();
+    refreshPrompt();
+    if (state.editingMemoryId === id) clearMemoryForm();
+    status("Memory deleted from this browser.");
+  } catch (error) {
+    status(error.message || "Could not delete memory.", true);
+  }
 }
 
 async function captureCurrentTab() {

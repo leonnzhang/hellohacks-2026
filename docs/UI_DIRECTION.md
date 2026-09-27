@@ -8,7 +8,7 @@ The Figma prototype is inspiration for the entry point: a quiet **Transfer** but
 
 1. The content script places the button near the visible composer and keeps it in position as the page changes.
 2. The menu shows ChatGPT, Claude, and Gemini, including the current service for a fresh same-service chat. It shows the number of core memories that will actually be included and links to **Memory Center** for review and editing.
-3. Choosing a destination reads the visible, role-labelled messages, builds the handoff context, and opens a blank destination chat. On the first send, a review shows the complete outgoing message, destination, and actions to send with context, send without context, copy, or cancel.
+3. Choosing a destination reads the visible, role-labelled messages, builds the handoff context, and opens a blank destination chat. On the first send, Relay adds the prepared context to the outgoing message without a review dialog.
 
 ## Memory Center
 
@@ -22,4 +22,4 @@ Later, if enough real categorized memories exist, the overview could show catego
 
 ## Verification
 
-Automated checks cover prompt assembly, active core category selection, and arming the destination tab. Live checks are still needed on each supported site because composer markup and send controls can change. Check both light and dark site themes, narrow windows, long chats, opening Memory Center from the button, and all review actions before release.
+Automated checks cover prompt assembly, active core category selection, and arming the destination tab. Live checks are still needed on each supported site because composer markup and send controls can change. Check both light and dark site themes, narrow windows, long chats, opening Memory Center from the button, and the resulting outgoing message before release.

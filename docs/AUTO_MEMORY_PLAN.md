@@ -12,7 +12,7 @@ The seven core categories, examples, exclusions, storage fields, and handoff rul
 2. The worker ignores an unchanged conversation snapshot. With the toggle enabled and an API key configured, it sends the snapshot to a small OpenAI model once. The request asks for at most three atomic core facts from the fixed category template, each grounded in an exact user-message quote. Assistant messages are context, not evidence.
 3. The worker validates the core category, checks each quote against a user message, applies deterministic exclusions, removes duplicates, and saves qualifying facts directly in local memory with source URL, quote, and timestamp.
 4. The Memory tab shows the category policy and each auto-saved fact with its category explanation and source quote. The user can edit or delete facts. Older pending suggestions from the previous version remain visible there until resolved.
-5. A send can include all eligible separately selected core memories. Older noncore and unscoped records, plus automatic memories in retired categories, are excluded until the user edits and saves them as core. It shows the count and full prompt for inspection, without a memory-picking step.
+5. A first send can include all eligible core memories. Older noncore and unscoped records, plus automatic memories in retired categories, are excluded until the user edits and saves them as core. Automatic saves appear in a small on-page notification with a 10-second Undo action.
 
 ## Data and privacy
 

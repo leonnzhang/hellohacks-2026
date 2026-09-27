@@ -32,4 +32,4 @@ Older records created before this core-only template stay in local storage. Reco
 
 ## Handoff rule
 
-A send can include all eligible core records, selected separately from transfer context. With semantic search off, selection uses recency. When semantic search is enabled, relevant records can be retrieved from the local index for review. If an older fact matters more, the user can edit the saved memories. Conflicting facts are not automatically reconciled; the model is asked to skip conflicts and the user can correct an existing record.
+A first send can include all eligible core records alongside transfer context. With semantic search off, all eligible records are included. When semantic search is enabled, relevant records are retrieved from the local index. If an older fact matters more, the user can edit the saved memories. Conflicting facts are not automatically reconciled; the model is asked to skip conflicts and the user can correct an existing record.

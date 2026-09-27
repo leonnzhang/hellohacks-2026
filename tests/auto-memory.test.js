@@ -10,11 +10,13 @@ function harness() {
   let calls = 0;
   let ids = 0;
   let request;
+  let onMessage;
+  const tabMessages = [];
   const chrome = {
     action: { onClicked: { addListener() {} } },
-    runtime: { onInstalled: { addListener() {} }, onMessage: { addListener() {} } },
+    runtime: { onInstalled: { addListener() {} }, onMessage: { addListener(handler) { onMessage = handler; } } },
     contextMenus: { onClicked: { addListener() {} } },
-    tabs: { onRemoved: { addListener() {} } },
+    tabs: { onRemoved: { addListener() {} }, async sendMessage(id, message) { tabMessages.push({ id, message }); } },
     storage: { local: {
       async get(keys) {
         const names = Array.isArray(keys) ? keys : [keys];
@@ -45,7 +47,7 @@ function harness() {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "memory-policy.js"), "utf8"), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "transfer-core.js"), "utf8"), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8"), context);
-  return { context, storage, getCalls: () => calls, getRequest: () => request };
+  return { context, storage, getCalls: () => calls, getRequest: () => request, onMessage: () => onMessage, tabMessages };
 }
 
 const sender = { tab: { url: "https://chatgpt.com/c/example" } };
@@ -82,6 +84,7 @@ test("automatic saving requires opt-in, grounds facts in user messages, and skip
 
   const changed = { ...capture, messages: [...capture.messages, { role: "user", text: "One more message." }] };
   assert.equal((await run(changed)).status, "processed");
+  assert.equal(getCalls(), 2);
   assert.equal(storage.memories.length, 2);
 });
 
@@ -98,6 +101,68 @@ test("new core categories are allowed and retired categories are rejected", () =
   ] };
   assert.deepEqual(Array.from(validate(raw, messages, []), (item) => item.category),
     ["hobbies_interests", "health_context"]);
+});
+
+test("undo removes only the newly saved memories from the same chat", async () => {
+  const { context, storage } = harness();
+  storage.autoMemorySettings = { enabled: true, apiKey: "test-key" };
+  const saved = await vm.runInContext("processAutoCapture", context)(capture, sender);
+  assert.equal(saved.saved.length, 2);
+  storage.memories.push({ id: "manual", text: "Keep me", scope: "global", origin: "manual" });
+  const undo = vm.runInContext("undoAutoMemories", context);
+  assert.equal((await undo(saved.saved.map((item) => item.id),
+    { tab: { url: "https://claude.ai/new" } })).ok, false);
+  assert.equal(storage.memories.length, 3);
+  const result = await undo(saved.saved.map((item) => item.id), sender);
+  assert.equal(result.ok, true);
+  assert.equal(result.removed, 2);
+  assert.deepEqual(storage.memories.map((item) => item.id), ["manual"]);
+});
+
+test("a successful auto-save notifies its chat so Undo can appear", async () => {
+  const { storage, onMessage, tabMessages } = harness();
+  storage.autoMemorySettings = { enabled: true, apiKey: "test-key" };
+  const response = await new Promise((resolve) => {
+    onMessage()({ type: "AUTO_MEMORY_CAPTURE", capture }, { tab: { id: 42, url: sender.tab.url } }, resolve);
+  });
+  assert.equal(response.saved.length, 2);
+  assert.equal(tabMessages.length, 1);
+  assert.equal(tabMessages[0].id, 42);
+  assert.equal(tabMessages[0].message.type, "AUTO_MEMORY_SAVED");
+  assert.deepEqual(Array.from(tabMessages[0].message.saved, (item) => item.id),
+    Array.from(response.saved, (item) => item.id));
+});
+
+test("repeating an already saved preferred name gives feedback without another save", async () => {
+  const { context, storage, getCalls, onMessage, tabMessages } = harness();
+  storage.autoMemorySettings = { enabled: true, apiKey: "test-key" };
+  storage.memories = [{ id: "nova", text: "The user prefers to be called Nova.",
+    category: "preferred_name", sourceQuote: "please call me Nova", origin: "automatic" }];
+  const repeated = { ...capture, messages: [
+    { role: "user", text: "For future chats, please call me Nova." },
+    { role: "assistant", text: "Got it." }
+  ] };
+  const response = await new Promise((resolve) => {
+    onMessage()({ type: "AUTO_MEMORY_CAPTURE", capture: repeated },
+      { tab: { id: 42, url: sender.tab.url } }, resolve);
+  });
+  assert.equal(response.status, "already_saved");
+  assert.equal(getCalls(), 0);
+  assert.equal(storage.memories.length, 1);
+  assert.equal(tabMessages[0].message.type, "AUTO_MEMORY_ALREADY_SAVED");
+});
+
+test("UI deletion is verified in storage and records when it happened", async () => {
+  const { context, storage, onMessage } = harness();
+  storage.memories = [{ id: "nova", text: "Call the user Nova", category: "preferred_name",
+    sourceUrl: "https://chatgpt.com/c/example", sourceQuote: "call me Nova" }];
+  const result = await new Promise((resolve) => {
+    onMessage()({ type: "DELETE_MEMORY", id: "nova" }, {}, resolve);
+  });
+  assert.equal(result.ok, true);
+  assert.equal(storage.memories.length, 0);
+  assert.ok(storage.memoryDeletionEpoch["https://chatgpt.com/c/example"]);
+  assert.equal(result.memories.length, 0);
 });
 
 test("automatic extraction sees only the new request from a transferred message", () => {

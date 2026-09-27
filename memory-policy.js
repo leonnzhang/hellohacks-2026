@@ -1,6 +1,5 @@
 globalThis.MEMORY_POLICY = {
   version: 2,
-  maxPerConversation: 3,
   categories: [
     {
       id: "preferred_name", label: "Preferred name", scope: "global",
