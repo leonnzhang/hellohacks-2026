@@ -30,6 +30,6 @@ An auto-saved record contains `id`, `text`, `category`, `scope: "global"`, `sour
 
 Older records created before this core-only template stay in local storage. Records without a core scope are visible but excluded from handoffs. Automatically saved records in retired categories, including standing constraints and ongoing goals, remain visible but are excluded from handoffs. Editing and saving one explicitly converts it to an uncategorized manual core memory; deleting it removes it.
 
-## Handoff rule
+## Send rule
 
-A first send can include all eligible core records alongside transfer context. With semantic search off, all eligible records are included. When semantic search is enabled, relevant records are retrieved from the local index. If an older fact matters more, the user can edit the saved memories. Conflicting facts are not automatically reconciled; the model is asked to skip conflicts and the user can correct an existing record.
+Transfer inserts the captured conversation into the destination composer before Send. It does not insert core memories at that point. When the user clicks Send, Relay checks core memories against the new request and adds the selected records to the outgoing message. With semantic search off, the current fallback includes all eligible records. When semantic search is enabled, relevant records are retrieved from the local index. If an older fact matters more, the user can edit the saved memories. Conflicting facts are not automatically reconciled; the model is asked to skip conflicts and the user can correct an existing record.

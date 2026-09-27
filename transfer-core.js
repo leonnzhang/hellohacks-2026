@@ -51,6 +51,25 @@ globalThis.RELAY_TRANSFER = (() => {
     return `${contextStart}\n${context.trim()}\n${contextEnd}\n\nCURRENT REQUEST\n${request}`;
   }
 
+  function buildTransferDraft(context) {
+    return context.trim()
+      ? `${contextStart}\n${context.trim()}\n${contextEnd}\n\nCURRENT REQUEST\n`
+      : "";
+  }
+
+  function parseTransferDraft(text) {
+    if (!text.startsWith(contextStart)) return null;
+    const end = text.indexOf(contextEnd, contextStart.length);
+    if (end < 0) return null;
+    const after = text.slice(end + contextEnd.length);
+    const requestMarker = after.match(/^\s*CURRENT REQUEST(?:\s*\n)?/);
+    if (!requestMarker) return null;
+    return {
+      transfer: text.slice(contextStart.length, end).trim(),
+      request: after.slice(requestMarker[0].length)
+    };
+  }
+
   function buildSendPrompt({ memories = [], transfer = "", relatedConversations = [] }, userMessage) {
     const request = userMessage.trim();
     if (!request) return "";
@@ -67,17 +86,12 @@ globalThis.RELAY_TRANSFER = (() => {
   }
 
   function stripAugmentedPrompt(text) {
-    if (text.startsWith(`${memoryStart}\n`)) {
-      const marker = "\n\nCURRENT REQUEST\n";
-      const index = text.indexOf(marker);
-      return index < 0 ? text : text.slice(index + marker.length);
-    }
-    if (!text.startsWith(`${contextStart}\n`)) return text;
-    const marker = `${contextEnd}\n\nCURRENT REQUEST\n`;
-    const index = text.indexOf(marker);
-    return index < 0 ? text : text.slice(index + marker.length);
+    if (!text.startsWith(memoryStart) && !text.startsWith(contextStart)) return text;
+    const markers = [...text.matchAll(/(?:^|\n)\s*CURRENT REQUEST\s*\n/g)];
+    const last = markers.at(-1);
+    return last ? text.slice(last.index + last[0].length).trimStart() : text;
   }
 
   return { destinations, isEligibleMemory, pickMemories, formatTranscript, buildPrompt,
-    buildAugmentedPrompt, buildSendPrompt, stripAugmentedPrompt };
+    buildAugmentedPrompt, buildTransferDraft, parseTransferDraft, buildSendPrompt, stripAugmentedPrompt };
 })();

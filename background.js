@@ -305,12 +305,14 @@ async function processInlineTransfer(payload, sender) {
     template
   });
   const url = globalThis.RELAY_TRANSFER.destinations[destination];
-  const tab = await chrome.tabs.create({ url, active: false });
+  // Arm the transfer before the destination content script can run. Loading the
+  // page first leaves a race in which its initial pending-transfer read is empty.
+  const tab = await chrome.tabs.create({ active: false });
   try {
     await chrome.storage.session.set({ [`pendingTransfer:${tab.id}`]: {
       id: crypto.randomUUID(), prompt, origin: new URL(url).origin, createdAt: Date.now()
     } });
-    await chrome.tabs.update(tab.id, { active: true });
+    await chrome.tabs.update(tab.id, { url, active: true });
   } catch (error) {
     await chrome.tabs.remove(tab.id);
     throw error;

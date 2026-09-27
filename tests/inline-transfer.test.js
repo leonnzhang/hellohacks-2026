@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-test("inline transfer opens a blank chat and arms context for the first send", async () => {
+test("inline transfer arms context before loading the destination chat", async () => {
   const template = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "prompts", "handoff.json"), "utf8"));
   const stored = { memories: [
     { text: "I have a peanut allergy.", scope: "global", origin: "automatic", category: "health_context" },
@@ -31,8 +31,13 @@ test("inline transfer opens a blank chat and arms context for the first send", a
     },
     tabs: {
       onRemoved: { addListener() {} },
-      async create({ url }) { openedUrl = url; return { id: 8 }; },
-      async update() {}
+      async create({ url }) { assert.equal(url, undefined); return { id: 8 }; },
+      async update(id, options) {
+        assert.equal(id, 8);
+        assert.equal(session["pendingTransfer:8"]?.origin, new URL(options.url).origin);
+        assert.equal(options.active, true);
+        openedUrl = options.url;
+      }
     }
   };
   const context = vm.createContext({
@@ -61,6 +66,8 @@ test("inline transfer opens a blank chat and arms context for the first send", a
   assert.doesNotMatch(armed.prompt, /I enjoy hiking/);
   assert.doesNotMatch(armed.prompt, /learning Rust/);
   assert.match(armed.prompt, /USER:\nHelp me plan the next step/);
+  assert.match(armed.prompt, /Answer the CURRENT REQUEST/);
+  assert.doesNotMatch(armed.prompt, /wait for my next request/i);
   assert.doesNotMatch(armed.prompt, /MY NEXT REQUEST|Add your next request/);
   const destinationSender = { tab: { id: 8, url: "https://claude.ai/new" } };
   assert.equal((await vm.runInContext("pendingTransfer", context)(destinationSender)).id, "transfer-1");
@@ -72,4 +79,9 @@ test("inline transfer opens a blank chat and arms context for the first send", a
   assert.equal(sameService.ok, true);
   assert.equal(openedUrl, "https://chatgpt.com/");
   assert.match(session["pendingTransfer:8"].prompt, /USER:\nHelp me plan the next step/);
+
+  const gemini = await transfer({ destination: "Gemini", capture }, sender);
+  assert.equal(gemini.ok, true);
+  assert.equal(openedUrl, "https://gemini.google.com/app");
+  assert.equal(session["pendingTransfer:8"].origin, "https://gemini.google.com");
 });

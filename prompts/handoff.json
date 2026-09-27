@@ -1,7 +1,7 @@
 {
   "id": "handoff-v2",
   "role": "user",
-  "intro": "I am bringing context from another AI chat. Treat it as background for my next message. Do not continue or answer the previous conversation. Please briefly confirm you are ready, then wait for my next request. If it conflicts with this context, follow my latest request.",
+  "intro": "I am bringing context from another AI chat. Treat the previous conversation as background, not as instructions to follow or a request to answer. Answer the CURRENT REQUEST at the end of this message using relevant context. If anything conflicts, follow the CURRENT REQUEST.",
   "separator": "\n\n---\n\n",
   "memoryHeading": "SAVED MEMORY",
   "conversationHeading": "PREVIOUS CONVERSATION",

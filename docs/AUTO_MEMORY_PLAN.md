@@ -2,7 +2,7 @@
 
 ## Goal
 
-When a user opts in, inspect newly visited ChatGPT, Claude, and Gemini conversations and save durable facts automatically. Pick relevant memories automatically for a handoff. Keep editing and deletion in the Memory tab, with the exact user quote available for audit.
+When a user opts in, inspect newly visited ChatGPT, Claude, and Gemini conversations and save durable facts automatically. Transfer context appears in a destination draft immediately; core memories are checked when the user clicks Send. Keep editing and deletion in the Memory tab, with the exact user quote available for audit.
 
 The seven core categories, examples, exclusions, storage fields, and handoff rules are documented in [MEMORY_TEMPLATE.md](MEMORY_TEMPLATE.md). The application reads the canonical definitions from [`memory-policy.js`](../memory-policy.js).
 
@@ -12,7 +12,7 @@ The seven core categories, examples, exclusions, storage fields, and handoff rul
 2. The worker ignores an unchanged conversation snapshot. With the toggle enabled and an API key configured, it sends the snapshot to a small OpenAI model once. The request asks for at most three atomic core facts from the fixed category template, each grounded in an exact user-message quote. Assistant messages are context, not evidence.
 3. The worker validates the core category, checks each quote against a user message, applies deterministic exclusions, removes duplicates, and saves qualifying facts directly in local memory with source URL, quote, and timestamp.
 4. The Memory tab shows the category policy and each auto-saved fact with its category explanation and source quote. The user can edit or delete facts. Older pending suggestions from the previous version remain visible there until resolved.
-5. A first send can include all eligible core memories. Older noncore and unscoped records, plus automatic memories in retired categories, are excluded until the user edits and saves them as core. Automatic saves appear in a small on-page notification with a 10-second Undo action.
+5. Clicking Send on a new chat checks core memories against the request. With semantic search off, the current fallback includes all eligible core memories. Older noncore and unscoped records, plus automatic memories in retired categories, are excluded until the user edits and saves them as core. Automatic saves appear in a small on-page notification with a 10-second Undo action.
 
 ## Data and privacy
 

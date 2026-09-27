@@ -51,7 +51,7 @@ Automatic saving is opt-in and requires the API key. Relay checks visible user a
 
 - In **Saved memories**, edit the concise-answer preference, save it, and show that the overview/map updates.
 - Delete one synthetic memory, then re-run a retrieval question that used to match it. The next search should no longer return that memory. An already displayed preview stays visible until you submit another question.
-- From a supported chat, click **Transfer**, choose a destination, and send the next message in the new chat. Relay adds the source conversation and relevant memories to that first message. Transfer context is one-time; later messages in the destination chat are sent normally.
+- From a supported chat, click **Transfer** and choose a destination. Show the captured conversation already in the new composer, with a blank `CURRENT REQUEST` section and no placeholder text. Add a request and click Send; Relay checks core memories then and adds eligible ones to that outgoing message. Transfer context is one-time; later messages in the destination chat are sent normally.
 
 ## Suggested three-minute narration
 

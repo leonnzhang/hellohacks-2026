@@ -59,7 +59,7 @@ function refreshPrompt() {
   $("auto-memory-summary").textContent = state.ragEnabled
     ? "Saved memories and conversations will be searched for relevant context when you prepare the transfer."
     : count
-      ? `${count} core ${count === 1 ? "memory" : "memories"} included automatically.`
+      ? `${count} core ${count === 1 ? "memory" : "memories"} available to check when you click Send.`
       : "No core memories saved yet. You can manage memories in the Memory tab.";
 }
 

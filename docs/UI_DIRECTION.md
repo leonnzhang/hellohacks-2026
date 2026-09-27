@@ -7,8 +7,9 @@ The Figma prototype is inspiration for the entry point: a quiet **Transfer** but
 ## Quick transfer flow
 
 1. The content script places the button near the visible composer and keeps it in position as the page changes.
-2. The menu shows ChatGPT, Claude, and Gemini, including the current service for a fresh same-service chat. It shows the number of core memories that will actually be included and links to **Memory Center** for review and editing.
-3. Choosing a destination reads the visible, role-labelled messages, builds the handoff context, and opens a blank destination chat. On the first send, Relay adds the prepared context to the outgoing message without a review dialog.
+2. The menu shows ChatGPT, Claude, and Gemini, including the current service for a fresh same-service chat. It shows how many core memories are available for the Send check and links to **Memory Center** for review and editing.
+3. Choosing a destination reads the visible, role-labelled messages, builds the handoff context, and inserts it into the new destination composer immediately. The draft ends with a blank `CURRENT REQUEST` section; the user can inspect or edit it before sending.
+4. Clicking Send checks core memories against the new request and adds the selected memories to the outgoing message. Transfer context is already in the composer; no placeholder request is inserted.
 
 ## Memory Center
 

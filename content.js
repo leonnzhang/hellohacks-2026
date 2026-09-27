@@ -10,7 +10,7 @@
 
   function cleanText(node) {
     const clone = node.cloneNode(true);
-    clone.querySelectorAll("button, svg, script, style, [aria-hidden='true'], #relay-transfer-root, #relay-memory-center-root").forEach((item) => item.remove());
+    clone.querySelectorAll("button, svg, script, style, [aria-hidden='true'], #relay-transfer-root, #relay-memory-center-root, #relay-pending-transfer").forEach((item) => item.remove());
     clone.querySelectorAll("br").forEach((item) => item.replaceWith("\n"));
     clone.querySelectorAll("p, li, pre, blockquote, h1, h2, h3, h4").forEach((item) => item.append("\n"));
     return (clone.textContent || "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -41,6 +41,16 @@
             const role = /You said:/i.test(label.slice(0, 80)) ? "user" : "assistant";
             return { role, text, node };
           })
+          .filter((item) => item.text);
+      }
+      if (!found.length) {
+        found = [...document.querySelectorAll("h4, [role='heading']")]
+          .filter((node) => /^(You said:|ChatGPT said:)$/.test((node.textContent || "").trim()))
+          .map((node) => ({
+            role: /^You said:/.test(node.textContent.trim()) ? "user" : "assistant",
+            text: cleanText(node.parentElement).replace(/^(You said:|ChatGPT said:)\s*/i, "").trim(),
+            node
+          }))
           .filter((item) => item.text);
       }
     } else if (service === "Claude") {
@@ -278,7 +288,7 @@
         const name = document.createElement("strong");
         name.textContent = destination;
         const description = document.createElement("small");
-        description.textContent = destination === service ? "Start a fresh chat here" : "Open an editable draft";
+        description.textContent = "Context appears in the new composer";
         copy.append(name, description);
         const arrow = document.createElement("span");
         arrow.className = "arrow";
@@ -298,7 +308,7 @@
           const messageCount = result.messages.filter((item) => ["user", "assistant"].includes(item.role)).length;
           try {
             const { count = 0, ragEnabled = false } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
-            shadow.querySelector(".context-count").textContent = `${messageCount} messages · ${count} ${count === 1 ? "memory" : "memories"} available${ragEnabled ? " · search on" : ""}`;
+            shadow.querySelector(".context-count").textContent = `${messageCount} messages · ${count} ${count === 1 ? "memory" : "memories"} checked on Send${ragEnabled ? " · search on" : ""}`;
           } catch { shadow.querySelector(".context-count").textContent = `${messageCount} messages`; }
         }
       });
@@ -372,7 +382,7 @@
     status.textContent = `Opening ${destination}…`;
     try {
       const reply = await chrome.runtime.sendMessage({ type: "INLINE_TRANSFER", destination, capture: result });
-      status.textContent = reply?.ok ? `Chat ready in ${destination}. Your context will be added when you send your first message.` :
+      status.textContent = reply?.ok ? `Opening ${destination}. Your context will appear in its composer; add a request before sending.` :
         (reply?.message || "Transfer failed.");
       if (reply?.prompt) {
         copy.dataset.prompt = reply.prompt;

@@ -14,7 +14,7 @@ Automatic saving and semantic search are off by default. If you enable automatic
 
 If you enable semantic search, saved conversation text and eligible memories are sent to OpenAI's embeddings API when the local index is built or updated. A query is sent for an embedding when Relay retrieves context. The searchable text and vectors remain in local IndexedDB. Disabling search deletes this index.
 
-A transfer opens a new chat and keeps the captured conversation in that tab's extension session storage for up to 30 minutes. When you send your first message, Relay adds eligible memories, relevant saved chat excerpts when search is enabled, and the transferred conversation. The combined text appears in the destination chat history.
+A transfer opens a new chat, keeps the captured conversation in that tab's extension session storage for up to 30 minutes, and inserts it into the destination composer immediately. Relay does not click Send for you, but the destination site may save or sync composer drafts according to its own behavior. When you click Send, Relay checks eligible core memories and, when search is enabled, relevant saved chat excerpts against your new request. It adds the selected context to the outgoing message, which then appears in the destination chat history.
 
 ## Access
 

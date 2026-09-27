@@ -38,6 +38,23 @@ test("core memories and transfer context can be selected independently", () => {
   assert.equal(core.stripAugmentedPrompt(both), "Next request");
 });
 
+test("transfer is drafted immediately without a request placeholder", () => {
+  const context = vm.createContext({});
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "transfer-core.js"), "utf8"), context);
+  const core = context.RELAY_TRANSFER;
+  const draft = core.buildTransferDraft("Earlier conversation");
+  assert.match(draft, /Earlier conversation/);
+  assert.match(draft, /CURRENT REQUEST\n$/);
+  assert.doesNotMatch(draft, /Add your next request here/);
+  assert.equal(core.parseTransferDraft(draft).request, "");
+  const edited = draft.replace("Earlier conversation", "Edited conversation") + "My new request";
+  assert.equal(core.parseTransferDraft(edited).transfer, "Edited conversation");
+  assert.equal(core.parseTransferDraft(edited).request, "My new request");
+  const editorSpacing = draft.replace(/\n/g, "\n\n") + "\nMy new request";
+  assert.equal(core.parseTransferDraft(editorSpacing).request.trim(), "My new request");
+  assert.equal(core.stripAugmentedPrompt(editorSpacing), "My new request");
+});
+
 test("retrieved chat excerpts are reference context and stay outside the current request", () => {
   const context = vm.createContext({});
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "transfer-core.js"), "utf8"), context);
