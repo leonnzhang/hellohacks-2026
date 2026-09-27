@@ -5,6 +5,7 @@ A Chrome extension for carrying chats and relevant saved context between AI serv
 ## Project docs
 
 - [Product brief](docs/PRODUCT_BRIEF.md): objectives, user journeys, scope, and demo success criteria.
+- [Demo guide](docs/DEMO_GUIDE.md): full setup, synthetic seed memories, sample retrieval questions, and a repeatable walkthrough.
 - [Developer handoff](docs/DEVELOPER_HANDOFF.md): architecture, data flow, verification status, and next steps.
 - [Automatic memory plan](docs/AUTO_MEMORY_PLAN.md): opt-in flow, privacy choices, limits, and verification.
 - [Core memory template](docs/MEMORY_TEMPLATE.md): the seven allowed categories, examples, exclusions, storage, and handoff rules.
@@ -19,6 +20,8 @@ A Chrome extension for carrying chats and relevant saved context between AI serv
 4. Pin **Relay**. On a supported chat tab, click its icon to open Memory Center in the page.
 
 ## Demo
+
+For a complete rehearsal, including a clean-profile setup, copy-ready synthetic memories, and suggested narration, see the [demo guide](docs/DEMO_GUIDE.md).
 
 1. Open a ChatGPT, Claude, or Gemini conversation and click **Transfer** beside the composer.
 2. Choose a destination. The extension opens a blank chat. Write your next message there; Relay adds the transfer context and relevant memories when you send.
