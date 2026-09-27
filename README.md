@@ -28,7 +28,7 @@ For a complete rehearsal, including a clean-profile setup, copy-ready synthetic 
 2. Choose a destination. Relay opens a new chat and immediately inserts the captured conversation into its composer. Review or edit it, then add your request after `CURRENT REQUEST`.
 3. Click **Send**. Relay checks core memories against your request at that moment and adds eligible context to the outgoing message.
 4. Open **Memory Center** from the Transfer menu or extension icon. Use the left sidebar to see an overview, manage saved memories, review memory rules, and read Privacy & data. You can also save selected text with the page's right-click menu.
-5. To enable automatic memory or semantic search, open **Privacy & data**, enter your own OpenAI API key, and enable the feature. Semantic search embeds saved conversations and eligible memories, then retrieves relevant context when you send. Text and vectors stay in this browser; queries are sent to OpenAI for embeddings.
+5. To enable automatic memory or semantic search, open **Privacy & data**, save your own OpenAI API key under **OpenAI connection**, and turn on **Automatic memory** or **Context search**. Each switch saves immediately. Semantic search embeds saved conversations and eligible memories, then retrieves relevant context when you send. Text and vectors stay in this browser; queries are sent to OpenAI for embeddings.
 
 For an auto-save demo, state a lasting fact or preference in a supported chat, wait for the assistant's reply, then watch for the on-page saved-memory notification. Relay checks later turns in the same conversation too. One-time requests and facts already saved may produce no new memory.
 

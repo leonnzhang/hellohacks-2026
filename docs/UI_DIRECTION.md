@@ -24,3 +24,15 @@ Later, if enough real categorized memories exist, the overview could show catego
 ## Verification
 
 Automated checks cover prompt assembly, active core category selection, and arming the destination tab. Live checks are still needed on each supported site because composer markup and send controls can change. Check both light and dark site themes, narrow windows, long chats, opening Memory Center from the button, and the resulting outgoing message before release.
+
+## UI consistency pass
+
+Memory Center and on-page notifications follow the current chat's light or dark appearance, including modern `oklch` colors. The modal uses readable neutral surfaces, stronger secondary text, and labeled navigation at narrow widths. Keyboard focus stays inside the modal and returns to the previous control when it closes.
+
+Privacy & data begins with the shared OpenAI connection. Saving a key is separate from enabling a feature; Automatic memory and Context search both use switches that save immediately. Editing a memory changes the editor title and accessible label to Edit memory.
+
+Transfer feedback and automatic-memory notifications share a stack in the upper right, away from the composer. Transfer notices can be dismissed without clearing the draft. Memory notifications retain the source quote, reason, and 10-second Undo countdown. Errors inside Memory Center remain until dismissed. Empty chats show guidance and disable transfer destinations.
+
+Live checks for this pass: ChatGPT in light and dark mode, memory editing and cancellation, context search returning the relevant test memory, transfer into a fresh ChatGPT composer and a successful follow-up response, dismissing the transfer notice, and labeled navigation at 250% zoom. System appearance and 100% zoom were restored after testing. The three previously failing transfer tests had stale fixtures (missing global memory scope and notification elements); those fixtures now match the current behavior.
+
+Further design work: long transfers still fill the composer with a large raw context draft. An expandable context preview with a clearly separate request field would reduce that friction, while preserving review before Send. Cross-service live checks on Claude and Gemini remain necessary.

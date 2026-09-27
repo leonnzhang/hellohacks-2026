@@ -21,11 +21,11 @@ let statusTimer;
 
 function status(message, error = false) {
   const element = $("status");
-  element.textContent = message;
+  $("status-text").textContent = message;
   element.classList.toggle("error", error);
   element.classList.add("show");
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => element.classList.remove("show"), 5500);
+  if (!error) statusTimer = setTimeout(() => element.classList.remove("show"), 5500);
 }
 
 function formatTranscript(messages) {
@@ -197,8 +197,8 @@ function renderMemoryMap() {
 function renderRetrievalHint() {
   $("retrieval-hint").textContent = state.ragEnabled
     ? state.ragChunks ? "Search uses your local index. The question is sent to OpenAI for embedding."
-      : "Semantic search is on; the local index is still being prepared."
-    : "Turn on semantic search in Privacy & data to try a question.";
+      : "Context search is on; the local index is still being prepared."
+    : "Turn on context search in Privacy & data to try a question.";
   $("retrieval-btn").disabled = !state.ragEnabled || !state.ragChunks;
 }
 
@@ -368,7 +368,11 @@ function renderMemories() {
 function renderAutoSettings() {
   $("auto-memory-enabled").checked = !!state.autoMemorySettings.enabled;
   $("auto-memory-status").textContent = state.autoMemorySettings.enabled ? "On" : "Off";
-  $("auto-memory-key").placeholder = state.autoMemorySettings.apiKey ? "•".repeat(40) : "Enter your API key";
+  $("auto-memory-status").classList.toggle("on", !!state.autoMemorySettings.enabled);
+  $("connection-status").textContent = state.autoMemorySettings.apiKey ? "Key saved" : "No key";
+  $("connection-status").classList.toggle("on", !!state.autoMemorySettings.apiKey);
+  $("remove-auto-key-btn").disabled = !state.autoMemorySettings.apiKey;
+  $("auto-memory-key").placeholder = state.autoMemorySettings.apiKey ? "Enter a new key to replace the saved key" : "Enter your API key";
   $("auto-memory-key").classList.toggle("has-saved-key", !!state.autoMemorySettings.apiKey);
   $("key-state").textContent = state.autoMemorySettings.apiKey ? "Key saved." : "No key saved.";
   $("auto-memory-error").textContent = state.autoMemoryLastError ? `Last scan failed: ${state.autoMemoryLastError}` : "";
@@ -376,6 +380,8 @@ function renderAutoSettings() {
 }
 
 function renderRagSettings() {
+  $("search-status").textContent = state.ragEnabled ? "On" : "Off";
+  $("search-status").classList.toggle("on", !!state.ragEnabled);
   $("rag-enabled").checked = !!state.ragEnabled;
   $("rag-status").textContent = state.ragLastError
     ? `Search index issue: ${state.ragLastError}`
@@ -404,8 +410,10 @@ async function saveRagSetting(event) {
   if (enabled && !state.autoMemorySettings.apiKey) {
     state.ragEnabled = false;
     renderRagSettings();
-    return status("Add and save the OpenAI API key below before enabling semantic search.", true);
+    $("auto-memory-key").focus();
+    return status("Save an OpenAI API key first to enable context search.", true);
   }
+  event.target.disabled = true;
   try {
     await chrome.storage.local.set({ ragEnabled: enabled, ragLastError: "" });
     state.ragEnabled = enabled;
@@ -417,18 +425,18 @@ async function saveRagSetting(event) {
     if (result?.error) throw new Error(result.error);
     if (enabled) {
       state.ragChunks = result?.chunks || 0;
-      status(`Semantic search is ready with ${state.ragChunks} local text sections.`);
+      status(`Context search is ready with ${state.ragChunks} local text sections.`);
     } else {
       state.ragChunks = 0;
-      status("Semantic search disabled and its local index cleared.");
+      status("Context search disabled and its local index cleared.");
     }
     renderRagSettings();
     refreshPrompt();
   } catch (error) {
     state.ragLastError = error.message || "Could not update the search index.";
     renderRagSettings();
-    status(`Could not update semantic search: ${error.message}`, true);
-  }
+    status(`Could not update context search: ${error.message}`, true);
+  } finally { event.target.disabled = false; }
 }
 
 function renderSuggestions() {
@@ -510,20 +518,33 @@ async function rescanActiveTab() {
   } catch { /* A supported tab may not be open. */ }
 }
 
-async function saveAutoSettings() {
-  const apiKey = $("auto-memory-key").value.trim() || state.autoMemorySettings.apiKey;
-  const enabled = $("auto-memory-enabled").checked;
-  if (enabled && !apiKey) return status("Enter an OpenAI API key before enabling automatic memory.", true);
+async function saveAutoSettings(event) {
+  const toggling = event?.type === "change";
+  const apiKey = (toggling ? "" : $("auto-memory-key").value.trim()) || state.autoMemorySettings.apiKey;
+  const enabled = toggling ? $("auto-memory-enabled").checked : !!state.autoMemorySettings.enabled;
+  if (!apiKey && (!toggling || enabled)) {
+    renderAutoSettings();
+    $("auto-memory-key").focus();
+    return status("Save an OpenAI API key first to enable automatic memory.", true);
+  }
+  $("auto-memory-enabled").disabled = true;
+  $("save-auto-settings-btn").disabled = true;
   try {
     const autoMemorySettings = { enabled, apiKey };
     await chrome.storage.local.set({ autoMemorySettings, autoMemoryLastError: "" });
     state.autoMemorySettings = autoMemorySettings;
     state.autoMemoryLastError = "";
-    $("auto-memory-key").value = "";
+    if (!toggling) $("auto-memory-key").value = "";
     renderAutoSettings();
     if (enabled) await rescanActiveTab();
-    status(enabled ? "Automatic memory enabled." : "Automatic memory disabled.");
-  } catch (error) { status(`Could not save settings: ${error.message}`, true); }
+    status(toggling ? (enabled ? "Automatic memory enabled." : "Automatic memory disabled.") : "API key saved in this browser.");
+  } catch (error) {
+    renderAutoSettings();
+    status(`Could not save settings: ${error.message}`, true);
+  } finally {
+    $("auto-memory-enabled").disabled = false;
+    $("save-auto-settings-btn").disabled = false;
+  }
 }
 
 async function removeAutoKey() {
@@ -538,11 +559,13 @@ async function removeAutoKey() {
   renderAutoSettings();
   renderRagSettings();
   await chrome.runtime.sendMessage({ type: "RAG_CLEAR" }).catch(() => {});
-  status("API key removed and automatic memory disabled.");
+  status("API key removed. Automatic memory and context search are off.");
 }
 
 function editMemory(memory) {
   state.editingMemoryId = memory.id;
+  $("memory-editor-title").textContent = "Edit memory";
+  $("memory-text").setAttribute("aria-label", "Edit memory");
   $("memory-text").value = memory.text;
   $("save-memory-btn").textContent = "Save changes";
   $("cancel-edit-btn").classList.remove("hidden");
@@ -551,6 +574,8 @@ function editMemory(memory) {
 
 function clearMemoryForm() {
   state.editingMemoryId = "";
+  $("memory-editor-title").textContent = "Add a memory";
+  $("memory-text").setAttribute("aria-label", "New memory");
   $("memory-text").value = "";
   $("save-memory-btn").textContent = "Save memory";
   $("cancel-edit-btn").classList.add("hidden");
@@ -787,13 +812,25 @@ async function init() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && window.parent !== window)
       window.parent.postMessage({ type: "RELAY_CLOSE_MEMORY_CENTER" }, "*");
+    if (event.key === "Tab" && window.parent !== window) {
+      const controls = [...document.querySelectorAll("button, input, select, textarea, summary, a[href]")]
+        .filter((node) => !node.disabled && node.getClientRects().length && getComputedStyle(node).visibility !== "hidden");
+      const first = controls[0], last = controls.at(-1);
+      if ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+      }
+    }
   });
+  if (window.parent !== window) $("close-btn").focus();
   $("capture-btn").addEventListener("click", captureCurrentTab);
   $("save-chat-btn").addEventListener("click", saveChat);
   $("delete-chat-btn").addEventListener("click", deleteChat);
   $("chat-select").addEventListener("change", (event) => selectChat(event.target.value));
   $("save-memory-btn").addEventListener("click", saveMemory);
   $("save-auto-settings-btn").addEventListener("click", saveAutoSettings);
+  $("auto-memory-enabled").addEventListener("change", saveAutoSettings);
+  $("dismiss-status").addEventListener("click", () => $("status").classList.remove("show"));
   $("rag-enabled").addEventListener("change", saveRagSetting);
   $("remove-auto-key-btn").addEventListener("click", removeAutoKey);
   $("cancel-edit-btn").addEventListener("click", clearMemoryForm);

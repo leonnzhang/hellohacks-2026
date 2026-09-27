@@ -144,6 +144,7 @@
   }
 
   function notice(message) {
+    if (globalThis.RELAY_UI) return globalThis.RELAY_UI.notice(message);
     const toast = document.createElement("div");
     toast.setAttribute("role", "status");
     toast.style.cssText = "position:fixed;right:18px;bottom:82px;z-index:2147483646;padding:10px 12px;border-radius:10px;background:#26313d;color:#fff;box-shadow:0 8px 24px #0004;font:12px/1.4 system-ui,sans-serif";
@@ -170,6 +171,7 @@
       pendingIndicator.id = "relay-pending-transfer";
       pendingIndicator.setAttribute("role", "status");
       pendingIndicator.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:2147483646;display:flex;align-items:flex-start;gap:8px;max-width:min(360px,calc(100vw - 36px));padding:10px 8px 10px 13px;border-radius:10px;background:#26313d;color:#fff;box-shadow:0 8px 24px #0004;font:12px/1.4 system-ui,sans-serif";
+      if (globalThis.RELAY_UI) pendingIndicator.style.cssText = "display:flex;align-items:flex-start;gap:8px";
       pendingIndicatorText = document.createElement("span");
       pendingIndicatorText.style.flex = "1";
       const dismiss = document.createElement("button");
@@ -178,20 +180,24 @@
       dismiss.title = "Dismiss";
       dismiss.textContent = "×";
       dismiss.style.cssText = "display:grid;place-items:center;flex:none;width:22px;height:22px;margin:-3px -2px 0 0;padding:0;border:0;border-radius:6px;background:transparent;color:#fff;font:20px/1 system-ui,sans-serif;cursor:pointer;opacity:.78";
+      if (globalThis.RELAY_UI) dismiss.style.color = "var(--rn-muted)";
       dismiss.addEventListener("mouseenter", () => { dismiss.style.opacity = "1"; dismiss.style.background = "#ffffff22"; });
       dismiss.addEventListener("mouseleave", () => { dismiss.style.opacity = ".78"; dismiss.style.background = "transparent"; });
       dismiss.addEventListener("click", () => {
         pendingIndicatorDismissed = true;
         pendingIndicator.hidden = true;
+        pendingIndicator.style.display = "none";
       });
       pendingIndicator.append(pendingIndicatorText, dismiss);
-      document.body.append(pendingIndicator);
+      if (globalThis.RELAY_UI) globalThis.RELAY_UI.mountNotice(pendingIndicator);
+      else document.body.append(pendingIndicator);
     }
     if (pendingIndicator) {
       pendingIndicatorText.textContent = draftPreparedId === pending.id
-        ? "Transfer context is in the composer. Add your request after CURRENT REQUEST; memories are checked when you send."
-        : "Preparing transfer context. If this chat has a draft, clear it to insert the transfer.";
+        ? "Relay · Chat ready to continue. Add your request at the end of the draft, then send."
+        : "Relay · Preparing your chat. Clear any existing draft to insert the transfer.";
       pendingIndicator.hidden = pendingIndicatorDismissed;
+      pendingIndicator.style.display = pendingIndicatorDismissed ? "none" : "flex";
     }
   }
 

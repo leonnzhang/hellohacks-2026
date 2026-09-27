@@ -20,7 +20,7 @@ test("ChatGPT capture falls back when its primary selector finds only one role",
   let useHeadings = true;
   const document = {
     title: "Chat", addEventListener() {},
-    querySelector: () => ({ innerText: "You said:\nFor future chats, use bullet points.\nChatGPT said:\nUnderstood." }),
+    querySelector: () => ({ innerText: "You said:\nFor future chats, use bullet points.\nChatGPT said:\nUnderstood.\nChat with ChatGPT" }),
     querySelectorAll(selector) {
       if (selector === "[data-message-author-role]") return [user];
       if (selector === "h4, [role='heading']") return useHeadings ? headings : [];
@@ -40,6 +40,7 @@ test("ChatGPT capture falls back when its primary selector finds only one role",
   useHeadings = false;
   const accessibleText = context.__testCapture();
   assert.equal(accessibleText.captureMethod, "accessible text");
+  assert.equal(accessibleText.messages[1].text, "Understood.");
   assert.deepEqual(Array.from(accessibleText.messages, (item) => item.role), ["user", "assistant"]);
 });
 
@@ -101,7 +102,17 @@ test("the save toast explains the memory and shows a draining Undo window", asyn
   let animation;
   const sent = [];
   class Element {
-    constructor(tag) { this.tag = tag; this.children = []; this.attributes = {}; this.style = {}; this.events = {}; }
+    constructor(tag) {
+      this.tag = tag; this.children = []; this.attributes = {}; this.events = {}; this.dataset = {};
+      this.style = { setProperty(name, value) { this[name] = value; } };
+      this.classList = { add() {}, contains: () => false };
+    }
+    get isConnected() { return !!this.parent; }
+    attachShadow() {
+      const stack = new Element("stack");
+      this.shadowRoot = { querySelector: () => stack };
+      return this.shadowRoot;
+    }
     setAttribute(name, value) { this.attributes[name] = value; }
     append(...children) { for (const child of children) { child.parent = this; this.children.push(child); } }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter((child) => child !== this); }
@@ -110,7 +121,7 @@ test("the save toast explains the memory and shows a draining Undo window", asyn
   }
   const body = new Element("body");
   const document = {
-    body, createElement: (tag) => new Element(tag),
+    body, documentElement: new Element("html"), createElement: (tag) => new Element(tag),
     addEventListener() {}, querySelectorAll: () => []
   };
   const chrome = { runtime: {
@@ -119,6 +130,7 @@ test("the save toast explains the memory and shows a draining Undo window", asyn
   } };
   const context = vm.createContext({
     document, chrome, location: { hostname: "chatgpt.com" },
+    getComputedStyle: () => ({ backgroundColor: "rgb(255, 255, 255)", color: "rgb(20, 20, 20)", colorScheme: "light" }),
     MutationObserver: class { observe() {} },
     Date: { now: () => now },
     setTimeout() {}, clearTimeout() {}, setInterval(callback) { tick = callback; return 1; },
@@ -134,7 +146,8 @@ test("the save toast explains the memory and shows a draining Undo window", asyn
     quote: "I prefer concise answers", reason: "Changes how future answers should be written." };
 
   context.__testToast([memory]);
-  const toast = body.children[0];
+  const stack = body.children[0].shadowRoot.querySelector(".stack");
+  const toast = stack.children[0];
   assert.match(allText(toast), /Because you said “I prefer concise answers”/);
   assert.match(allText(toast), /Changes how future answers should be written/);
   assert.equal(animation.options.duration, 10000);
@@ -150,9 +163,37 @@ test("the save toast explains the memory and shows a draining Undo window", asyn
 
   now += 5000;
   context.__testToast([{ ...memory, id: "m2" }]);
-  const nextToast = body.children[0];
+  const nextToast = stack.children[0];
   now += 10000;
   tick();
   assert.match(allText(nextToast), /Saved in Relay/);
   assert.equal(find(nextToast, (item) => item.tag === "button"), undefined);
+  context.RELAY_UI.notice("A transfer is ready.");
+  assert.equal(body.children.length, 1, "notifications share one host");
+  assert.equal(stack.children.length, 2, "transfer and memory feedback stack without replacing each other");
+});
+
+test("theme detection respects a dark color scheme and ignores transparent white backgrounds", () => {
+  let scheme = "dark";
+  let background = "rgba(255, 255, 255, 0)";
+  const body = { dataset: {}, classList: { contains: () => false } };
+  const root = { dataset: {}, classList: { contains: () => false } };
+  const context = vm.createContext({
+    document: { body, documentElement: root, querySelectorAll: () => [], addEventListener() {} },
+    location: { hostname: "chatgpt.com" },
+    getComputedStyle: (node) => ({ backgroundColor: node === body ? background : "rgb(255, 255, 255)", colorScheme: scheme }),
+    chrome: { runtime: { onMessage: { addListener() {} } } },
+    MutationObserver: class { observe() {} }, Date, setTimeout() {}, clearTimeout() {}, setInterval() {},
+    requestAnimationFrame() {}, addEventListener() {}
+  });
+  const source = fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8");
+  vm.runInContext(source.replace(/\}\)\(\);\s*$/, "globalThis.theme = chatTheme;\n})();"), context);
+  assert.equal(context.theme().dark, true);
+  scheme = "light";
+  assert.equal(context.theme().dark, false);
+  scheme = "light dark";
+  background = "oklch(0.247759 0 none)";
+  assert.equal(context.theme().dark, true);
+  background = "oklch(98% 0 none)";
+  assert.equal(context.theme().dark, false);
 });

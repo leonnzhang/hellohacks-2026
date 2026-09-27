@@ -12,6 +12,7 @@ function panelHarness() {
       elements.set(id, {
         value: "", textContent: "", options: [], style: {},
         classList: { add() {}, remove() {}, toggle() {} },
+        focus() {}, setAttribute() {},
         replaceChildren(...options) { this.options = options; },
         add(option) { this.options.push(option); }
       });
@@ -136,4 +137,37 @@ test("handoff includes core memory and excludes older noncore records", () => {
   assert.match(element("prompt-preview").value, /I enjoy hiking/);
   assert.doesNotMatch(element("prompt-preview").value, /MY NEXT REQUEST|Add your next request/);
   assert.match(element("auto-memory-summary").textContent, /2 core memories/);
+});
+
+test("automatic memory switches save immediately without persisting an unsaved replacement key", async () => {
+  const { context, element, storage } = panelHarness();
+  const state = vm.runInContext("state", context);
+  state.autoMemorySettings = { enabled: true, apiKey: "saved-test-key" };
+  element("auto-memory-key").value = "unsaved-replacement";
+  element("auto-memory-enabled").checked = false;
+  await vm.runInContext('saveAutoSettings({ type: "change" })', context);
+  assert.equal(storage.autoMemorySettings.enabled, false);
+  assert.equal(storage.autoMemorySettings.apiKey, "saved-test-key");
+  assert.equal(element("auto-memory-key").value, "unsaved-replacement");
+  assert.equal(element("auto-memory-status").textContent, "Off");
+  assert.equal(element("auto-memory-enabled").disabled, false);
+});
+
+test("saving an API key does not silently enable automatic memory", async () => {
+  const { context, element, storage } = panelHarness();
+  element("auto-memory-key").value = "new-test-key";
+  element("auto-memory-enabled").checked = true;
+  await vm.runInContext('saveAutoSettings({ type: "click" })', context);
+  assert.equal(storage.autoMemorySettings.apiKey, "new-test-key");
+  assert.equal(storage.autoMemorySettings.enabled, false);
+  assert.match(element("status-text").textContent, /API key saved/);
+});
+
+test("automatic memory stays off if the switch is used before saving a key", async () => {
+  const { context, element, storage } = panelHarness();
+  element("auto-memory-enabled").checked = true;
+  await vm.runInContext('saveAutoSettings({ type: "change" })', context);
+  assert.equal(element("auto-memory-enabled").checked, false);
+  assert.equal(storage.autoMemorySettings, undefined);
+  assert.match(element("status-text").textContent, /Save an OpenAI API key first/);
 });

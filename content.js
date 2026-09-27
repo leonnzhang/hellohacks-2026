@@ -10,7 +10,7 @@
 
   function cleanText(node) {
     const clone = node.cloneNode(true);
-    clone.querySelectorAll("button, svg, script, style, [aria-hidden='true'], #relay-transfer-root, #relay-memory-center-root, #relay-pending-transfer").forEach((item) => item.remove());
+    clone.querySelectorAll("button, svg, script, style, [aria-hidden='true'], #relay-transfer-root, #relay-memory-center-root, #relay-notifications, #relay-pending-transfer").forEach((item) => item.remove());
     clone.querySelectorAll("br").forEach((item) => item.replaceWith("\n"));
     clone.querySelectorAll("p, li, pre, blockquote, h1, h2, h3, h4").forEach((item) => item.append("\n"));
     return (clone.textContent || "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -87,6 +87,7 @@
         const firstTurn = pageText.search(/You said:|ChatGPT said:/i);
         if (firstTurn >= 0) pageText = pageText.slice(firstTurn);
         pageText = pageText.replace(/ChatGPT can make mistakes[\s\S]*$/i, "").trim();
+        pageText = pageText.replace(/\nChat with ChatGPT\s*$/i, "").trim();
         const markers = [...pageText.matchAll(/(?:^|\n)(You said:|ChatGPT said:)\s*/gi)];
         if (markers.length) {
           const parsed = markers.map((marker, index) => {
@@ -175,7 +176,8 @@
   function chatTheme() {
     const composer = findComposer();
     const style = getComputedStyle(composer || document.body);
-    const opaque = (color) => color && !/^(transparent|rgba?\(0,\s*0,\s*0,\s*0\))$/.test(color);
+    const opaque = (color) => color && color !== "transparent" &&
+      !/^rgba\([^)]*,\s*0\s*\)$/.test(color) && !/\/\s*0%?\s*\)$/.test(color);
     let surface = "";
     for (let node = composer; node; node = node.parentElement) {
       const color = getComputedStyle(node).backgroundColor;
@@ -188,11 +190,22 @@
     if (!opaque(surface)) surface = "rgb(255, 255, 255)";
     const pageBackground = [document.body, document.documentElement]
       .map((node) => getComputedStyle(node).backgroundColor).find(opaque) || surface;
-    const rgb = surface.match(/\d+(?:\.\d+)?/g)?.slice(0, 3).map(Number) || [255, 255, 255];
+    const colorLightness = (color) => {
+      const components = color.match(/[-+]?(?:\d*\.)?\d+%?/g) || [];
+      if (/^(oklab|oklch)\(/.test(color))
+        return parseFloat(components[0]) / (components[0]?.endsWith("%") ? 100 : 1);
+      if (/^(lab|lch)\(/.test(color)) return parseFloat(components[0]) / 100;
+      if (/^rgb/.test(color) && components.length >= 3) {
+        const rgb = components.slice(0, 3).map((value) => parseFloat(value) / (value.endsWith("%") ? 100 : 255));
+        return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
+      }
+      return null;
+    };
     const explicitTheme = `${document.documentElement.dataset.theme || ""} ${document.body.dataset.theme || ""}`;
+    const colorScheme = getComputedStyle(document.documentElement).colorScheme;
     const dark = /dark/i.test(explicitTheme) || document.documentElement.classList.contains("dark") ||
-      document.body.classList.contains("dark") ||
-      (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722) < 130;
+      document.body.classList.contains("dark") || colorScheme === "dark" ||
+      (colorLightness(surface) ?? colorLightness(pageBackground) ?? 1) < .55;
     const radius = Math.min(20, Math.max(12, parseFloat(getComputedStyle(composer?.parentElement || document.body).borderRadius) || 14));
     const accent = dark ? "#8bb4ff" : "#3569d4";
     return {
@@ -209,23 +222,27 @@
   let transferPanel;
   let transferButton;
   let memoryCenterHost;
+  let memoryCenterFocus;
   let mountQueued = false;
   function closeMemoryCenter() {
     memoryCenterHost?.remove();
     memoryCenterHost = null;
+    memoryCenterFocus?.focus();
   }
 
   function openMemoryCenter() {
     if (memoryCenterHost) return closeMemoryCenter();
     const dark = chatTheme().dark;
+    memoryCenterFocus = transferHost?.shadowRoot.activeElement || document.activeElement;
     memoryCenterHost = document.createElement("div");
+    memoryCenterHost.dataset.dark = String(dark);
     memoryCenterHost.id = "relay-memory-center-root";
     memoryCenterHost.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;";
     const shadow = memoryCenterHost.attachShadow({ mode: "open" });
     shadow.innerHTML = `<style>
       :host{all:initial}*{box-sizing:border-box}
       .backdrop{position:absolute;inset:0;background:rgba(16,18,24,.32)}
-      .dialog{position:relative;width:min(780px,100%);height:min(580px,calc(100vh - 32px));overflow:hidden;border:1px solid ${dark ? "#44464f" : "#e6e7eb"};border-radius:20px;background:${dark ? "#202126" : "#fff"};box-shadow:0 24px 72px rgba(0,0,0,.20),0 2px 12px rgba(0,0,0,.08)}
+      .dialog{position:relative;width:min(860px,100%);height:min(680px,calc(100vh - 32px));overflow:hidden;border:1px solid ${dark ? "#44464f" : "#e6e7eb"};border-radius:20px;background:${dark ? "#202126" : "#fff"};box-shadow:0 24px 72px rgba(0,0,0,.20),0 2px 12px rgba(0,0,0,.08)}
       iframe{display:block;width:100%;height:100%;border:0}
     </style><div class="backdrop"></div><div class="dialog" role="dialog" aria-modal="true" aria-label="Memory Center"><iframe title="Memory Center" src="${chrome.runtime.getURL(`sidepanel.html?theme=${dark ? "dark" : "light"}`)}"></iframe></div>`;
     shadow.querySelector(".backdrop").addEventListener("click", closeMemoryCenter);
@@ -299,7 +316,7 @@
         const name = document.createElement("strong");
         name.textContent = destination;
         const description = document.createElement("small");
-        description.textContent = "Context appears in the new composer";
+        description.textContent = destination === service ? "Start a fresh chat" : `Continue in ${destination}`;
         copy.append(name, description);
         const arrow = document.createElement("span");
         arrow.className = "arrow";
@@ -317,6 +334,9 @@
           shadow.querySelector(".copy").hidden = true;
           const result = capture();
           const messageCount = result.messages.filter((item) => ["user", "assistant"].includes(item.role)).length;
+          const canTransfer = result.captureMethod !== "page text" && result.messages.some((item) => item.role === "user");
+          shadow.querySelectorAll(".destination").forEach((row) => { row.disabled = !canTransfer; });
+          if (!canTransfer) shadow.querySelector(".status").textContent = "Start a conversation first. Then choose where to continue it.";
           try {
             const { count = 0, ragEnabled = false } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
             shadow.querySelector(".context-count").textContent = `${messageCount} messages · ${count} ${count === 1 ? "memory" : "memories"} checked on Send${ragEnabled ? " · search on" : ""}`;
@@ -350,6 +370,12 @@
     }
     transferHost.hidden = false;
     const theme = chatTheme();
+    if (memoryCenterHost && memoryCenterHost.dataset.dark !== String(theme.dark)) {
+      memoryCenterHost.dataset.dark = String(theme.dark);
+      memoryCenterHost.shadowRoot.querySelector("iframe").contentWindow.postMessage(
+        { type: "RELAY_THEME", dark: theme.dark }, `chrome-extension://${chrome.runtime.id}`);
+    }
+    if (notificationHost) updateNoticeTheme(theme.dark);
     for (const [name, value] of Object.entries({
       "--rt-surface": theme.surface, "--rt-text": theme.text, "--rt-muted": theme.muted,
       "--rt-border": theme.border, "--rt-accent": theme.accent,
@@ -421,15 +447,54 @@
   let autoMemoryToastTimer = null;
   let lastNotifiedMemoryIds = "";
   let lastAlreadySavedText = "";
+  let notificationHost;
+  function mountNotice(toast) {
+    if (!notificationHost?.isConnected) {
+      notificationHost = document.createElement("div");
+      notificationHost.id = "relay-notifications";
+      notificationHost.style.cssText = "position:fixed;top:76px;right:18px;z-index:2147483646;width:min(360px,calc(100vw - 36px));max-height:calc(100vh - 94px);overflow:auto;pointer-events:none";
+      notificationHost.attachShadow({ mode: "open" }).innerHTML = `<style>
+        :host{all:initial}*{box-sizing:border-box}.stack{display:grid;gap:10px;padding:2px 2px 16px}
+        .notice{position:relative;padding:14px;border:1px solid var(--rn-border);border-radius:14px;background:var(--rn-surface);color:var(--rn-text);box-shadow:0 6px 22px #0002;font:13px/1.5 system-ui,sans-serif;pointer-events:auto;overflow-wrap:anywhere}
+        .notice[hidden]{display:none!important}button{cursor:pointer}button:focus-visible{outline:2px solid var(--rn-accent);outline-offset:3px}
+        .dismiss{float:right;display:grid;place-items:center;width:28px;height:28px;margin:-5px -5px 2px 8px;border:0;border-radius:7px;background:transparent;color:var(--rn-muted);font:20px/1 system-ui}
+        .dismiss:hover{background:var(--rn-track)}.label{display:block;margin-bottom:5px;color:var(--rn-muted);font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}
+      </style><div class="stack"></div>`;
+      document.body.append(notificationHost);
+    }
+    updateNoticeTheme(chatTheme().dark);
+    toast.classList.add("notice");
+    notificationHost.shadowRoot.querySelector(".stack").append(toast);
+  }
+  function updateNoticeTheme(dark) {
+    const palette = dark
+      ? { surface: "#2b2c32", text: "#f4f4f6", muted: "#b6b7c0", border: "#44454e", accent: "#8bb4ff", track: "#41434d", error: "#ffb4ae" }
+      : { surface: "#ffffff", text: "#202127", muted: "#646772", border: "#dedfe5", accent: "#3569d4", track: "#e9edf5", error: "#ad4742" };
+    for (const [name, value] of Object.entries(palette)) notificationHost.style.setProperty(`--rn-${name}`, value);
+  }
+  function notice(message) {
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "status");
+    const dismiss = document.createElement("button");
+    dismiss.className = "dismiss";
+    dismiss.type = "button";
+    dismiss.textContent = "×";
+    dismiss.setAttribute("aria-label", "Dismiss Relay notification");
+    dismiss.addEventListener("click", () => toast.remove());
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = "Relay";
+    const detail = document.createElement("div");
+    detail.textContent = message;
+    toast.append(dismiss, label, detail);
+    mountNotice(toast);
+    setTimeout(() => toast.remove(), 6000);
+  }
+  globalThis.RELAY_UI = { mountNotice, notice };
   function showAlreadySavedToast(text) {
     if (!text || text === lastAlreadySavedText) return;
     lastAlreadySavedText = text;
-    const toast = document.createElement("div");
-    toast.setAttribute("role", "status");
-    toast.style.cssText = "position:fixed;right:18px;bottom:82px;z-index:2147483647;width:min(340px,calc(100vw - 36px));padding:12px 14px;border-radius:12px;background:#26313d;color:#fff;box-shadow:0 8px 24px #0004;font:12px/1.4 system-ui,sans-serif";
-    toast.textContent = "Relay already saved this memory.";
-    document.body.append(toast);
-    setTimeout(() => toast.remove(), 5000);
+    notice("This memory is already saved.");
   }
   function showAutoMemoryToast(saved) {
     if (!Array.isArray(saved) || !saved.length) return;
@@ -441,7 +506,9 @@
     const toast = document.createElement("div");
     autoMemoryToast = toast;
     toast.setAttribute("role", "status");
-    toast.style.cssText = "position:fixed;right:18px;bottom:140px;z-index:2147483647;width:min(380px,calc(100vw - 36px));padding:14px;border-radius:14px;background:#26313d;color:#fff;box-shadow:0 8px 24px #0004;font:12px/1.45 system-ui,sans-serif";
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = "Relay · Automatic memory";
     const title = document.createElement("strong");
     title.style.cssText = "display:block;font-size:13px;margin-bottom:9px";
     title.textContent = saved.length === 1 ? "Memory added" : `${saved.length} memories added`;
@@ -449,20 +516,20 @@
     details.style.cssText = "display:grid;gap:9px;max-height:240px;overflow:auto";
     for (const item of saved.slice(0, 3)) {
       const entry = document.createElement("div");
-      entry.style.cssText = "border-left:2px solid #9fc5ff;padding-left:9px";
+      entry.style.cssText = "border-left:2px solid var(--rn-accent);padding-left:9px";
       const fact = document.createElement("div");
       fact.style.cssText = "font-weight:650;overflow-wrap:anywhere";
       fact.textContent = item.text;
       entry.append(fact);
       if (item.quote) {
         const source = document.createElement("div");
-        source.style.cssText = "margin-top:3px;color:#d5dce5;overflow-wrap:anywhere";
+        source.style.cssText = "margin-top:3px;color:var(--rn-muted);overflow-wrap:anywhere";
         source.textContent = `Because you said “${item.quote}”`;
         entry.append(source);
       }
       if (item.reason) {
         const reason = document.createElement("div");
-        reason.style.cssText = "margin-top:3px;color:#abbcd0;overflow-wrap:anywhere";
+        reason.style.cssText = "margin-top:3px;color:var(--rn-muted);overflow-wrap:anywhere";
         reason.textContent = item.reason;
         entry.append(reason);
       }
@@ -470,28 +537,28 @@
     }
     if (saved.length > 3) {
       const more = document.createElement("div");
-      more.style.color = "#d5dce5";
+      more.style.color = "var(--rn-muted)";
       more.textContent = `And ${saved.length - 3} more ${saved.length === 4 ? "memory" : "memories"}`;
       details.append(more);
     }
     const actions = document.createElement("div");
     actions.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:11px";
     const countdown = document.createElement("span");
-    countdown.style.color = "#d5dce5";
+    countdown.style.color = "var(--rn-muted)";
     const undo = document.createElement("button");
     undo.type = "button";
     undo.textContent = saved.length === 1 ? "Undo" : "Undo all";
-    undo.style.cssText = "border:0;background:none;color:#9fc5ff;font:700 12px system-ui,sans-serif;cursor:pointer;padding:0";
+    undo.style.cssText = "border:0;background:none;color:var(--rn-accent);font:700 12px system-ui,sans-serif;cursor:pointer;padding:6px 2px";
     const errorNote = document.createElement("div");
-    errorNote.style.cssText = "color:#ffb4ae;margin-top:5px";
+    errorNote.style.cssText = "color:var(--rn-error);margin-top:5px";
     const track = document.createElement("div");
     track.setAttribute("role", "progressbar");
     track.setAttribute("aria-label", "Seconds left to undo");
     track.setAttribute("aria-valuemin", "0");
     track.setAttribute("aria-valuemax", "10");
-    track.style.cssText = "height:4px;margin-top:10px;border-radius:99px;overflow:hidden;background:#506274";
+    track.style.cssText = "height:4px;margin-top:10px;border-radius:99px;overflow:hidden;background:var(--rn-track)";
     const bar = document.createElement("div");
-    bar.style.cssText = "height:100%;width:100%;background:#9fc5ff;transform-origin:left";
+    bar.style.cssText = "height:100%;width:100%;background:var(--rn-accent);transform-origin:left";
     track.append(bar);
     const deadline = Date.now() + 10000;
     let finished = false;
@@ -546,8 +613,8 @@
       }
     });
     actions.append(countdown, undo);
-    toast.append(title, details, actions, errorNote, track);
-    document.body.append(toast);
+    toast.append(label, title, details, actions, errorNote, track);
+    mountNotice(toast);
     tick();
     bar.animate([{ transform: "scaleX(1)" }, { transform: "scaleX(0)" }],
       { duration: 10000, easing: "linear", fill: "forwards" });
@@ -555,12 +622,7 @@
     autoMemoryToastTimer = timer;
   }
   function showAutoMemoryError() {
-    const toast = document.createElement("div");
-    toast.setAttribute("role", "status");
-    toast.style.cssText = "position:fixed;right:18px;bottom:82px;z-index:2147483647;width:min(340px,calc(100vw - 36px));padding:12px 14px;border-radius:12px;background:#26313d;color:#fff;box-shadow:0 8px 24px #0004;font:12px/1.4 system-ui,sans-serif";
-    toast.textContent = "Relay could not save a memory. Check Privacy & data for the error.";
-    document.body.append(toast);
-    setTimeout(() => toast.remove(), 6000);
+    notice("Could not save a memory. Open Privacy & data in Memory Center for details.");
   }
   async function sendAutoCapture() {
     if (autoSending) { scheduleAutoCapture(5000); return; }
@@ -608,6 +670,9 @@
   }
 
   if (document.body) {
+    const themeObserver = new MutationObserver(scheduleTransferControl);
+    for (const node of [document.documentElement, document.body])
+      themeObserver.observe(node, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
     new MutationObserver(() => { scheduleAutoCapture(); scheduleTransferControl(); }).observe(document.body, {
       subtree: true, childList: true, characterData: true
     });
