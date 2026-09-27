@@ -367,6 +367,14 @@
     requestAnimationFrame(mountTransferControl);
   }
 
+  function transferErrorMessage(error) {
+    const message = error?.message || "";
+    if (/extension context invalidated/i.test(message)) {
+      return "Relay was reloaded while this chat was open. Reload this chat tab, then try Transfer again.";
+    }
+    return message || "Transfer failed.";
+  }
+
   async function startInlineTransfer(destination) {
     const shadow = transferHost.shadowRoot;
     const status = shadow.querySelector(".status");
@@ -388,7 +396,7 @@
         copy.dataset.prompt = reply.prompt;
         copy.hidden = false;
       }
-    } catch (error) { status.textContent = error.message || "Transfer failed."; }
+    } catch (error) { status.textContent = transferErrorMessage(error); }
     finally { rows.forEach((row) => { row.disabled = false; }); }
   }
 
