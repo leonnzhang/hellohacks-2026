@@ -5,7 +5,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { webcrypto } = require("node:crypto");
 
-function harness() {
+function harness(onRequest = () => {}) {
   const storage = { autoMemorySettings: { enabled: false, apiKey: "" }, memories: [], memorySuggestions: [], autoMemoryProcessed: {} };
   let calls = 0;
   let ids = 0;
@@ -30,6 +30,7 @@ function harness() {
     fetch: async (_url, options) => {
       request = JSON.parse(options.body);
       calls++;
+      onRequest(storage);
       return { ok: true, async json() { return { output: [{ content: [{ type: "output_text", text: JSON.stringify({
         memories: [
           { text: "The user prefers concise answers.", quote: "I prefer concise answers", category: "answer_style" },
@@ -59,6 +60,15 @@ const capture = {
     { role: "assistant", text: "You live on Mars." }
   ]
 };
+
+test("pausing saving while extraction is in flight prevents new memories being persisted", async () => {
+  const { context, storage } = harness((data) => { data.autoMemorySettings.enabled = false; });
+  storage.autoMemorySettings = { enabled: true, apiKey: "test-key" };
+  const result = await vm.runInContext("processAutoCapture", context)(capture, sender);
+  assert.equal(result.status, "disabled");
+  assert.equal(storage.memories.length, 0);
+  assert.deepEqual(storage.autoMemoryProcessed, {});
+});
 
 test("automatic saving requires opt-in, grounds facts in user messages, and skips unchanged chats", async () => {
   const { context, storage, getCalls, getRequest } = harness();

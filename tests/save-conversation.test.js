@@ -46,6 +46,83 @@ function panelHarness() {
   return { context, element, storage };
 }
 
+test("settings Save is enabled only for changed values and resets when reverted", () => {
+  const { context, element } = panelHarness();
+  const state = vm.runInContext("state", context);
+  state.autoMemorySettings = { enabled: true, apiKey: "saved-key" };
+  element("auto-memory-enabled").checked = true;
+  element("rag-enabled").checked = false;
+  const update = () => vm.runInContext("updateSettingsDirty()", context);
+  update();
+  assert.equal(element("save-auto-settings-btn").disabled, true);
+  element("auto-memory-enabled").checked = false;
+  update();
+  assert.equal(element("save-auto-settings-btn").disabled, false);
+  element("auto-memory-enabled").checked = true;
+  element("auto-memory-key").value = "saved-key";
+  update();
+  assert.equal(element("save-auto-settings-btn").disabled, true);
+  element("auto-memory-key").value = "new-key";
+  update();
+  assert.equal(element("save-auto-settings-btn").disabled, false);
+  element("auto-memory-key").value = "";
+  element("rag-enabled").checked = true;
+  update();
+  assert.equal(element("save-auto-settings-btn").disabled, false);
+});
+
+test("automatic saving requires a saved or newly entered API key", () => {
+  const { context, element } = panelHarness();
+  const state = vm.runInContext("state", context);
+  state.autoMemorySettings = { enabled: false, apiKey: "" };
+  const update = () => vm.runInContext("updateSettingsDirty()", context);
+  update();
+  assert.equal(element("auto-memory-enabled").disabled, true);
+  assert.equal(element("rag-enabled").disabled, true);
+  element("auto-memory-key").value = "new-key";
+  update();
+  assert.equal(element("auto-memory-enabled").disabled, false);
+  assert.equal(element("rag-enabled").disabled, false);
+  element("auto-memory-enabled").checked = true;
+  element("auto-memory-key").value = " ";
+  update();
+  assert.equal(element("auto-memory-enabled").disabled, true);
+  assert.equal(element("auto-memory-enabled").checked, false);
+  state.autoMemorySettings.apiKey = "saved-key";
+  update();
+  assert.equal(element("auto-memory-enabled").disabled, false);
+});
+
+test("overview pause persists disabled saving while retaining key and memories", async () => {
+  const { context, element, storage } = panelHarness();
+  const state = vm.runInContext("state", context);
+  state.autoMemorySettings = { enabled: true, apiKey: "saved-key" };
+  storage.memories = [{ text: "Keep this memory" }];
+  await vm.runInContext("toggleMemorySaving()", context);
+  assert.equal(storage.autoMemorySettings.enabled, false);
+  assert.equal(storage.autoMemorySettings.apiKey, "saved-key");
+  assert.equal(storage.memories.length, 1);
+  assert.equal(element("saving-status").textContent, "Off");
+  assert.equal(element("toggle-saving-btn").textContent, "Turn on");
+  await vm.runInContext("toggleMemorySaving()", context);
+  assert.equal(storage.autoMemorySettings.enabled, true);
+  assert.equal(element("saving-status").textContent, "Active");
+});
+
+test("Memory Center applies the source chatbot color tokens", async () => {
+  const { context } = panelHarness();
+  const properties = {};
+  context.document.documentElement = { dataset: {}, style: { setProperty: (key, value) => { properties[key] = value; } } };
+  context.chrome.tabs = { query: async () => [{ id: 1 }], sendMessage: async () => ({
+    service: "Claude", dark: true, surface: "#222222", background: "#111111", text: "#eeeeee", muted: "#aaaaaa", border: "#444444", accent: "#e6a681"
+  }) };
+  await vm.runInContext("syncChatTheme()", context);
+  assert.equal(properties["--ui-surface"], "#222222");
+  assert.equal(properties["--ui-bg"], "#111111");
+  assert.equal(properties["--ui-accent"], "#e6a681");
+  assert.equal(context.document.documentElement.dataset.themeDark, "true");
+});
+
 test("Save creates a visible entry; Update edits it; a new draft creates another entry", async () => {
   const { context, element, storage } = panelHarness();
   const state = vm.runInContext("state", context);
@@ -76,7 +153,7 @@ test("Save creates a visible entry; Update edits it; a new draft creates another
   assert.match(element("chat-select").options[1].label, /Second chat/);
 });
 
-test("overview chart uses saved memory counts and transfer eligibility", () => {
+test("overview distinguishes total, manually saved, and automatically saved memories", () => {
   const { context, element } = panelHarness();
   const state = vm.runInContext("state", context);
   state.memories = [
@@ -86,7 +163,7 @@ test("overview chart uses saved memory counts and transfer eligibility", () => {
   ];
   vm.runInContext("renderOverview()", context);
   assert.equal(element("overview-total").textContent, "3");
-  assert.equal(element("overview-ready").textContent, "2");
+  assert.equal(element("overview-manual").textContent, "1");
   assert.equal(element("overview-auto").textContent, "1");
   assert.equal(element("manual-count").textContent, "1");
   assert.equal(element("older-count").textContent, "1");

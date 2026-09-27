@@ -1,6 +1,32 @@
 (() => {
   if (globalThis.__relayMemoryContentScript) return;
   globalThis.__relayMemoryContentScript = true;
+  const extensionOrigin = `chrome-extension://${chrome.runtime.id}`;
+  let contextExpired = false;
+  let pageObserver;
+  let periodicScan;
+
+  function extensionReady() {
+    if (contextExpired) return false;
+    try {
+      if (chrome.runtime?.id) return true;
+    } catch { /* Chrome invalidates existing content scripts on extension reload. */ }
+    contextExpired = true;
+    pageObserver?.disconnect();
+    clearTimeout(autoTimer);
+    clearInterval(periodicScan);
+    cancelAnimationFrame(trackingFrame);
+    closeMemoryCenter();
+    if (transferPanel) transferPanel.hidden = true;
+    if (transferButton) {
+      transferButton.setAttribute("aria-expanded", "false");
+      transferButton.setAttribute("aria-label", "Refresh this tab to reconnect Relay");
+      transferButton.querySelector(".label").textContent = "Refresh tab";
+      transferButton.title = "Relay was updated. Refresh this tab to reconnect.";
+      transferButton.addEventListener("click", () => location.reload(), { once: true });
+    }
+    return false;
+  }
   const host = location.hostname;
   const service = host.includes("chatgpt") || host.includes("openai")
     ? "ChatGPT"
@@ -193,8 +219,15 @@
     memoryCenterHost = null;
   }
 
-  function openMemoryCenter() {
-    if (memoryCenterHost) return closeMemoryCenter();
+  function openMemoryCenter(section = "") {
+    if (!extensionReady()) return;
+    let panelUrl;
+    try { panelUrl = chrome.runtime.getURL("sidepanel.html"); }
+    catch { return; /* Reload may race the readiness check. */ }
+    if (memoryCenterHost) {
+      closeMemoryCenter();
+      if (!section) return;
+    }
     memoryCenterHost = document.createElement("div");
     memoryCenterHost.id = "relay-memory-center-root";
     memoryCenterHost.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;";
@@ -204,12 +237,12 @@
       .backdrop{position:absolute;inset:0;background:rgba(16,18,24,.18)}
       .dialog{position:relative;width:min(780px,100%);height:min(580px,calc(100vh - 32px));overflow:hidden;border:1px solid rgba(255,255,255,.24);border-radius:20px;background:#fff;box-shadow:0 24px 72px rgba(0,0,0,.20),0 2px 12px rgba(0,0,0,.08)}
       iframe{display:block;width:100%;height:100%;border:0}
-    </style><div class="backdrop"></div><div class="dialog" role="dialog" aria-modal="true" aria-label="Memory Center"><iframe title="Memory Center" src="${chrome.runtime.getURL("sidepanel.html")}"></iframe></div>`;
+    </style><div class="backdrop"></div><div class="dialog" role="dialog" aria-modal="true" aria-label="Memory Center"><iframe title="Memory Center" src="${panelUrl}${section === "privacy" ? "?setup=api-key" : ""}"></iframe></div>`;
     shadow.querySelector(".backdrop").addEventListener("click", closeMemoryCenter);
     document.body.append(memoryCenterHost);
   }
   addEventListener("message", (event) => {
-    if (event.origin === `chrome-extension://${chrome.runtime.id}` &&
+    if (event.origin === extensionOrigin &&
         event.source === memoryCenterHost?.shadowRoot.querySelector("iframe")?.contentWindow &&
         event.data?.type === "RELAY_CLOSE_MEMORY_CENTER") closeMemoryCenter();
   });
@@ -256,7 +289,7 @@
       : `${messages.length} ${messages.length === 1 ? "message" : "messages"} captured${trimmed ? " (trimmed)" : ""}`;
     // The transfer payload contains text only. Never imply uploaded files move
     // with it, even when a filename appears in a captured message.
-    return { captured, attachments: "0 attachments · text only",
+    return { captured,
       memories: memoryCount == null ? "Core memories unavailable" : `${memoryCount} core ${memoryCount === 1 ? "memory" : "memories"}` };
   }
 
@@ -320,6 +353,7 @@
   }
 
   function trackComposerPosition() {
+    if (!extensionReady()) return;
     positionTransferControl();
     trackingFrame = requestAnimationFrame(trackComposerPosition);
   }
@@ -335,6 +369,7 @@
 
   function mountTransferControl() {
     mountQueued = false;
+    if (!extensionReady()) return;
     const composer = findComposer();
     if (!composer) {
       trackedComposer = null;
@@ -366,11 +401,12 @@
         .service-chatgpt{background:#dcefe7;color:#136449}.service-claude{background:#f5e2d7;color:#9c4a2d}.service-gemini{background:#e5ebff;color:#315fbe}
         .arrow{color:var(--rt-muted);font-size:16px}.foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 2px 1px;border-top:1px solid var(--rt-border);color:var(--rt-muted);font-size:10px}
         .context-count{display:grid;gap:3px;min-width:0;line-height:1.4}.foot{align-items:flex-end;flex-wrap:wrap}.foot button{margin-left:auto}
+        .menu-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.saving-state{font-size:10px;color:var(--rt-muted);padding:4px 7px;border:1px solid var(--rt-border);border-radius:999px;white-space:nowrap}
         .foot button,.copy{padding:0;border:0;background:none;color:var(--rt-accent);font-size:11px;font-weight:700;white-space:nowrap}.foot button:hover,.copy:hover{text-decoration:underline}
         .status{margin:9px 2px 0;color:var(--rt-muted);font-size:11px;line-height:1.45}.status:empty{display:none}.copy{margin:8px 2px 0}
       </style>
       <button type="button" class="launcher" aria-haspopup="dialog" aria-expanded="false" aria-label="Transfer this chat"><span class="mark">${transferIcon("transfer")}</span><span class="label">Transfer</span><span class="chevron">${transferIcon("chevron")}</span></button>
-      <section class="menu" role="dialog" aria-label="Transfer chat" hidden><div class="head"><p class="eyebrow">Chat transfer</p><strong>Continue this conversation</strong><small>Start a new chat with your context carried over.</small></div><div class="destinations"></div><div class="foot"><span class="context-count">Checking context…</span><button type="button" class="memory-center">Memory Center</button></div><p class="status" role="status" aria-live="polite"></p><button type="button" class="copy" hidden>Copy prepared prompt</button></section>`;
+      <section class="menu" role="dialog" aria-label="Transfer chat" hidden><div class="head"><div class="menu-heading"><strong>Continue in…</strong><span class="saving-state" role="status">Checking…</span></div><small>Bring your conversation with you.</small></div><div class="destinations"></div><div class="foot"><span class="context-count">Checking context…</span><button type="button" class="memory-center">Memory Center</button></div><p class="status" role="status" aria-live="polite"></p><button type="button" class="copy" hidden>Copy prepared prompt</button></section>`;
       transferButton = shadow.querySelector(".launcher");
       transferPanel = shadow.querySelector(".menu");
       const list = shadow.querySelector(".destinations");
@@ -401,6 +437,7 @@
       }
       };
       transferButton.addEventListener("click", async () => {
+        if (!extensionReady()) return;
         transferPanel.hidden = !transferPanel.hidden;
         transferButton.setAttribute("aria-expanded", String(!transferPanel.hidden));
         if (!transferPanel.hidden) {
@@ -421,9 +458,10 @@
           };
           showSummary(null);
           try {
-            const { count = 0 } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
+            const { count = 0, savingActive = false } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
+            shadow.querySelector(".saving-state").textContent = savingActive ? "Saving active" : "Saving off";
             showSummary(count);
-          } catch { showSummary(null); }
+          } catch { showSummary(null); shadow.querySelector(".saving-state").textContent = "Status unavailable"; }
         }
       });
       shadow.addEventListener("keydown", (event) => {
@@ -465,26 +503,30 @@
   }
 
   function scheduleTransferControl() {
+    if (!extensionReady()) return;
     if (mountQueued) return;
     mountQueued = true;
     requestAnimationFrame(mountTransferControl);
   }
 
   async function startInlineTransfer(destination) {
+    if (!extensionReady()) return;
     const shadow = transferHost.shadowRoot;
     const status = shadow.querySelector(".status");
     const copy = shadow.querySelector(".copy");
     const rows = shadow.querySelectorAll(".destination");
     const result = capture();
-    if (result.captureMethod === "page text" || !result.messages.some((item) => item.role === "user")) {
-      status.textContent = "Could not read this chat automatically. Try a different conversation.";
-      return;
-    }
     rows.forEach((row) => { row.disabled = true; });
     copy.hidden = true;
     status.textContent = `Opening ${destination}…`;
     try {
       const reply = await chrome.runtime.sendMessage({ type: "INLINE_TRANSFER", destination, capture: result });
+      if (reply?.code === "API_KEY_REQUIRED") {
+        transferPanel.hidden = true;
+        transferButton.setAttribute("aria-expanded", "false");
+        openMemoryCenter("privacy");
+        return;
+      }
       status.textContent = reply?.ok ? `Chat ready in ${destination}. ${reply.count || 0} memories and ${reply.retrieved || 0} saved excerpts included.${reply.ragError ? ` Search issue: ${reply.ragError}` : ""} Review context when sending.` :
         (reply?.message || "Transfer failed.");
       if (reply?.prompt) {
@@ -517,19 +559,21 @@
   }
 
   function scheduleAutoCapture(delay = 15000) {
+    if (!extensionReady()) return;
     clearTimeout(autoTimer);
     autoTimer = setTimeout(() => { autoTimer = null; sendAutoCapture(); }, delay);
   }
 
   if (document.body) {
-    new MutationObserver(() => { scheduleAutoCapture(); scheduleTransferControl(); }).observe(document.body, {
+    pageObserver = new MutationObserver(() => { scheduleAutoCapture(); scheduleTransferControl(); });
+    pageObserver.observe(document.body, {
       subtree: true, childList: true, characterData: true
     });
     scheduleAutoCapture();
     scheduleTransferControl();
     addEventListener("scroll", scheduleTransferControl, true);
     addEventListener("resize", scheduleTransferControl);
-    setInterval(() => { if (!autoTimer) scheduleAutoCapture(); scheduleTransferControl(); }, 30000);
+    periodicScan = setInterval(() => { if (!autoTimer) scheduleAutoCapture(); scheduleTransferControl(); }, 30000);
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

@@ -259,6 +259,17 @@
   }
 
   function intercept(event) {
+    // An old script must not keep intercepting the site's Send after reload.
+    try {
+      if (!chrome.runtime?.id) {
+        pending = null;
+        memories = [];
+        ragEnabled = false;
+        removeBadge();
+        activeReviewClose?.();
+        return;
+      }
+    } catch { return; }
     if ((!pending && !memories.length && (!ragEnabled || hasExistingMessages())) || reviewing || replaying) return;
     const input = composer();
     if (!input) return;

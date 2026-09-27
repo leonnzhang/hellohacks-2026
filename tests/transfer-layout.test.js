@@ -15,7 +15,7 @@ test("footer counts captured messages and distinguishes text transfer from file 
   ] };
   const summary = context.transferSummary(result, 1);
   assert.equal(summary.captured, "2 messages captured");
-  assert.equal(summary.attachments, "0 attachments · text only");
+  assert.equal(summary.attachments, undefined);
   assert.equal(summary.memories, "1 core memory");
   assert.equal(context.transferSummary(result, 0).memories, "0 core memories");
   assert.equal(context.transferSummary(result, null).memories, "Core memories unavailable");

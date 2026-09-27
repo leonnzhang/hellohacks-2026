@@ -52,6 +52,11 @@ test("inline transfer opens a blank chat and arms a reviewed first send", async 
       { role: "assistant", text: "Let's make a short plan." }
     ]
   };
+  const blocked = await transfer({ destination: "Claude", capture }, sender);
+  assert.equal(blocked.code, "API_KEY_REQUIRED");
+  assert.equal(openedUrl, "");
+  assert.equal(Object.keys(session).length, 0);
+  stored.autoMemorySettings = { apiKey: "test-key", enabled: false };
   const result = await transfer({ destination: "Claude", capture }, sender);
   assert.equal(result.ok, true);
   assert.equal(result.count, 0);
