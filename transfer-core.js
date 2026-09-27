@@ -7,6 +7,8 @@ globalThis.RELAY_TRANSFER = (() => {
   const maxTranscript = 20000;
   const contextStart = "[Relay transfer context — start]";
   const contextEnd = "[Relay transfer context — end]";
+  const memoryStart = "[Relay core memories — start]";
+  const memoryEnd = "[Relay core memories — end]";
 
   function isEligibleMemory(memory, policy = globalThis.MEMORY_POLICY) {
     const active = new Set(policy.categories.map((entry) => entry.id));
@@ -15,7 +17,7 @@ globalThis.RELAY_TRANSFER = (() => {
   }
 
   function pickMemories(memories, policy = globalThis.MEMORY_POLICY) {
-    return memories.filter((memory) => isEligibleMemory(memory, policy)).slice(0, 3);
+    return memories.filter((memory) => isEligibleMemory(memory, policy)).slice(0, 7);
   }
 
   function formatTranscript(messages) {
@@ -45,7 +47,21 @@ globalThis.RELAY_TRANSFER = (() => {
     return `${contextStart}\n${context.trim()}\n${contextEnd}\n\nCURRENT REQUEST\n${request}`;
   }
 
+  function buildSendPrompt({ memories = [], transfer = "" }, userMessage) {
+    const request = userMessage.trim();
+    if (!request) return "";
+    const sections = [];
+    if (memories.length) sections.push(`${memoryStart}\n${memories.map((memory) => `- ${memory.text}`).join("\n")}\n${memoryEnd}`);
+    if (transfer.trim()) sections.push(`${contextStart}\n${transfer.trim()}\n${contextEnd}`);
+    return sections.length ? `${sections.join("\n\n")}\n\nCURRENT REQUEST\n${request}` : request;
+  }
+
   function stripAugmentedPrompt(text) {
+    if (text.startsWith(`${memoryStart}\n`)) {
+      const marker = "\n\nCURRENT REQUEST\n";
+      const index = text.indexOf(marker);
+      return index < 0 ? text : text.slice(index + marker.length);
+    }
     if (!text.startsWith(`${contextStart}\n`)) return text;
     const marker = `${contextEnd}\n\nCURRENT REQUEST\n`;
     const index = text.indexOf(marker);
@@ -53,5 +69,5 @@ globalThis.RELAY_TRANSFER = (() => {
   }
 
   return { destinations, isEligibleMemory, pickMemories, formatTranscript, buildPrompt,
-    buildAugmentedPrompt, stripAugmentedPrompt };
+    buildAugmentedPrompt, buildSendPrompt, stripAugmentedPrompt };
 })();

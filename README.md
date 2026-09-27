@@ -21,7 +21,7 @@ A Chrome extension for two connected actions: carry a chat into another AI servi
 ## Demo
 
 1. Open a ChatGPT, Claude, or Gemini conversation and click **Transfer** beside the composer.
-2. Choose a destination. The extension opens a blank chat. Write your next message there; when you send it, Relay shows the exact message with the previous conversation and up to three core memories added. Choose **Send with context** to send it, **Send without context** to send your original message, or **Cancel**.
+2. Choose a destination. The extension opens a blank chat. Write your next message there; when you send it, Relay shows the exact message with independently selected transfer context and up to seven core memories added. Choose **Send with context** to send it, **Send without context** to send your original message, or **Cancel**.
 3. Open **Memory Center** from the Transfer menu or extension icon. Use the left sidebar to see an overview, manage saved memories, review memory rules, and read Privacy & data. You can also save selected text with the page's right-click menu.
 4. To enable automatic memory, open **Privacy & data**, enter your own OpenAI API key, and turn on automatic saving. Core facts grounded in your messages are saved as supported chats settle.
 

@@ -12,7 +12,7 @@ The first action preserves the context of a particular conversation. The second 
 ## Core user journey
 
 1. Open a conversation on ChatGPT, Claude, or Gemini and click **Transfer** beside the composer.
-2. Choose ChatGPT, Claude, or Gemini as the destination. The extension captures visible messages and prepares up to three core memories for the destination tab.
+2. Choose ChatGPT, Claude, or Gemini as the destination. The extension captures visible messages and prepares the captured conversation for the destination tab; up to seven core memories can be selected separately.
 3. Write the next request in the destination chat. On send, review the exact combined message and choose whether to send with context, send without context, or cancel.
 4. Open **Memory Center** from the Transfer menu or toolbar icon to review, add, edit, and delete memories. Automatic memory is opt-in and uses a personal API key.
 

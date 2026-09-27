@@ -260,7 +260,7 @@
         .status{margin:9px 2px 0;color:var(--rt-muted);font-size:11px;line-height:1.45}.status:empty{display:none}.copy{margin:8px 2px 0}
       </style>
       <button type="button" class="launcher" aria-haspopup="dialog" aria-expanded="false" aria-label="Transfer this chat"><span class="mark" aria-hidden="true">⇄</span><span class="label">Transfer</span><span class="chevron" aria-hidden="true">⌄</span></button>
-      <section class="menu" role="dialog" aria-label="Transfer chat" hidden><div class="head"><p class="eyebrow">Chat transfer</p><strong>Continue this conversation</strong><small>Open a new editable draft with your chat and core memory.</small></div><div class="destinations"></div><div class="foot"><span class="context-count">Checking context…</span><button type="button" class="memory-center">Memory Center →</button></div><p class="status" role="status" aria-live="polite"></p><button type="button" class="copy" hidden>Copy prepared prompt</button></section>`;
+      <section class="menu" role="dialog" aria-label="Transfer chat" hidden><div class="head"><p class="eyebrow">Chat transfer</p><strong>Continue this conversation</strong><small>Open a new chat with transfer context. Choose core memories separately when sending.</small></div><div class="destinations"></div><div class="foot"><span class="context-count">Checking context…</span><button type="button" class="memory-center">Memory Center →</button></div><p class="status" role="status" aria-live="polite"></p><button type="button" class="copy" hidden>Copy prepared prompt</button></section>`;
       transferButton = shadow.querySelector(".launcher");
       transferPanel = shadow.querySelector(".menu");
       const list = shadow.querySelector(".destinations");
@@ -296,7 +296,7 @@
           const messageCount = result.messages.filter((item) => ["user", "assistant"].includes(item.role)).length;
           try {
             const { count = 0 } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
-            shadow.querySelector(".context-count").textContent = `${messageCount} messages · ${count} ${count === 1 ? "memory" : "memories"}`;
+            shadow.querySelector(".context-count").textContent = `${messageCount} messages to transfer · ${count} core ${count === 1 ? "memory" : "memories"} available separately`;
           } catch { shadow.querySelector(".context-count").textContent = `${messageCount} messages`; }
         }
       });

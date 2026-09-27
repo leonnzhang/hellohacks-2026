@@ -171,14 +171,12 @@ async function processInlineTransfer(payload, sender) {
   if (capture.captureMethod === "page text" || !messages.length) {
     return { ok: false, message: "Could not identify chat messages here. Try a different conversation." };
   }
-  const { memories = [] } = await chrome.storage.local.get("memories");
-  const chosen = globalThis.RELAY_TRANSFER.pickMemories(memories);
   const response = await fetch(chrome.runtime.getURL("prompts/handoff.json"));
   if (!response.ok) throw new Error("Could not load the handoff template.");
   const template = await response.json();
   const prompt = globalThis.RELAY_TRANSFER.buildPrompt({
     transcript: globalThis.RELAY_TRANSFER.formatTranscript(messages),
-    memories: chosen,
+    memories: [],
     template
   });
   const url = globalThis.RELAY_TRANSFER.destinations[destination];
@@ -192,7 +190,13 @@ async function processInlineTransfer(payload, sender) {
     await chrome.tabs.remove(tab.id);
     throw error;
   }
-  return { ok: true, destination, count: chosen.length };
+  return { ok: true, destination, count: 0 };
+}
+
+async function coreMemories(sender) {
+  if (!supportedChatUrl(sender.tab?.url || "")) return [];
+  const { memories = [] } = await chrome.storage.local.get("memories");
+  return globalThis.RELAY_TRANSFER.pickMemories(memories).map(({ id, text }) => ({ id, text }));
 }
 
 async function pendingTransfer(sender) {
@@ -265,6 +269,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "GET_CORE_MEMORIES") {
+    coreMemories(sender).then(sendResponse).catch(() => sendResponse([]));
+    return true;
+  }
   if (message?.type === "GET_PENDING_TRANSFER") {
     pendingTransfer(sender).then(sendResponse).catch(() => sendResponse(null));
     return true;

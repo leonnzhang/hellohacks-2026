@@ -54,11 +54,11 @@ test("inline transfer opens a blank chat and arms a reviewed first send", async 
   };
   const result = await transfer({ destination: "Claude", capture }, sender);
   assert.equal(result.ok, true);
-  assert.equal(result.count, 2);
+  assert.equal(result.count, 0);
   assert.equal(openedUrl, "https://claude.ai/new");
   const armed = session["pendingTransfer:8"];
-  assert.match(armed.prompt, /I have a peanut allergy/);
-  assert.match(armed.prompt, /I enjoy hiking/);
+  assert.doesNotMatch(armed.prompt, /I have a peanut allergy/);
+  assert.doesNotMatch(armed.prompt, /I enjoy hiking/);
   assert.doesNotMatch(armed.prompt, /learning Rust/);
   assert.match(armed.prompt, /USER:\nHelp me plan the next step/);
   assert.doesNotMatch(armed.prompt, /MY NEXT REQUEST|Add your next request/);
