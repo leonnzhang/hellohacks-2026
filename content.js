@@ -217,6 +217,28 @@
     if (event.key === "Escape" && memoryCenterHost) closeMemoryCenter();
   });
   function composerAnchor(composer) {
+    // The editable region (including Claude's chat-input) can sit well inside
+    // the visible rounded composer. Anchor outside that surface, not its text.
+    const inputRect = composer.getBoundingClientRect();
+    let surface = null;
+    for (let parent = composer.parentElement, depth = 0; parent && depth < 10; parent = parent.parentElement, depth++) {
+      if (parent === document.body || parent === document.documentElement) break;
+      const rect = parent.getBoundingClientRect();
+      if (rect.width > innerWidth * .98 || rect.height > Math.max(360, innerHeight * .7)) break;
+      if (rect.width < inputRect.width || rect.height < inputRect.height) continue;
+      const style = getComputedStyle(parent);
+      const rounded = parseFloat(style.borderTopLeftRadius) >= 8;
+      const bordered = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth]
+        .some((value) => parseFloat(value) > 0);
+      const painted = style.backgroundColor && !["transparent", "rgba(0, 0, 0, 0)"].includes(style.backgroundColor);
+      if (rounded && (bordered || painted || (style.boxShadow && style.boxShadow !== "none"))) surface = parent;
+    }
+    if (surface) return surface;
+    const selector = service === "ChatGPT" ? "[data-testid='composer'], form"
+      : service === "Claude" ? "fieldset, form"
+        : "input-container, .input-area-container, .input-area";
+    const container = composer.closest(selector);
+    if (container && container.getBoundingClientRect().height < innerHeight * .65) return container;
     let anchor = composer;
     for (let parent = composer.parentElement, depth = 0; parent && depth < 5; parent = parent.parentElement, depth++) {
       const rect = parent.getBoundingClientRect();
@@ -226,10 +248,96 @@
     return anchor;
   }
 
+  function transferSummary(result, memoryCount) {
+    const messages = result.messages.filter((item) => ["user", "assistant"].includes(item.role) && typeof item.text === "string" && item.text.trim());
+    const transcript = messages.map((item) => `${item.role.toUpperCase()}:\n${item.text.slice(0, 12000)}`).join("\n\n");
+    const trimmed = transcript.length > 20000 || messages.some((item) => item.text.length > 12000);
+    const captured = result.captureMethod === "page text" ? "Messages unavailable"
+      : `${messages.length} ${messages.length === 1 ? "message" : "messages"} captured${trimmed ? " (trimmed)" : ""}`;
+    // The transfer payload contains text only. Never imply uploaded files move
+    // with it, even when a filename appears in a captured message.
+    return { captured, attachments: "0 attachments · text only",
+      memories: memoryCount == null ? "Core memories unavailable" : `${memoryCount} core ${memoryCount === 1 ? "memory" : "memories"}` };
+  }
+
+  function destinationSuggestions(messages) {
+    const text = messages.filter((item) => item.role === "user").slice(-4).map((item) => item.text).join(" ");
+    const research = /\b(research|sources?|citations?|news|compare|comparison)\b/i.test(text);
+    const writing = /\b(write|writing|draft|essay|revise|story|document|code|debug|function)\b/i.test(text);
+    const preferred = research ? "Gemini" : writing ? "Claude" : null;
+    const descriptions = {
+      ChatGPT: "Explore ideas and turn them into practical next steps.",
+      Claude: "Develop detailed explanations, writing, and code.",
+      Gemini: "Explore research questions and compare perspectives."
+    };
+    return ["Claude", "Gemini", "ChatGPT"].filter((name) => name !== service)
+      .sort((a, b) => Number(b === preferred) - Number(a === preferred))
+      .map((name) => ({ name, recommended: name === preferred,
+        description: name === preferred
+          ? research ? "Suggested for the research questions in this chat." : "Suggested for the writing or code in this chat."
+          : descriptions[name] }));
+  }
+
+  let trackedComposer;
+  let trackedAnchor;
+  let trackingFrame;
+  function positionTransferControl() {
+    if (!transferHost || !trackedComposer?.isConnected || !trackedAnchor?.isConnected) {
+      if (transferHost) transferHost.hidden = true;
+      return;
+    }
+    const rect = trackedAnchor.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const left = viewport?.offsetLeft || 0;
+    const top = viewport?.offsetTop || 0;
+    const width = viewport?.width || innerWidth;
+    const height = viewport?.height || innerHeight;
+    transferHost.hidden = !trackedComposer.getClientRects().length || rect.bottom <= top ||
+      rect.top >= top + height || rect.right <= left || rect.left >= left + width;
+    if (transferHost.hidden) return;
+    const buttonRect = transferButton.getBoundingClientRect();
+    const buttonWidth = buttonRect.width;
+    const buttonHeight = buttonRect.height || 38;
+    const buttonTop = Math.min(top + height - buttonHeight - 8, rect.top - buttonHeight - 10);
+    // Never clamp the control down into the text box when the composer scrolls
+    // to the top of the screen; restore it when there is room above again.
+    if (buttonTop < top + 8) {
+      transferHost.hidden = true;
+      return;
+    }
+    const buttonLeft = Math.max(left + 8, Math.min(left + width - buttonWidth - 8, rect.right - buttonWidth));
+    // Only write changed geometry; a sidebar transition can move the composer every frame.
+    const setStyle = (node, property, value) => {
+      if (node.style[property] !== value) node.style[property] = value;
+    };
+    setStyle(transferHost, "top", `${buttonTop}px`);
+    setStyle(transferHost, "left", `${buttonLeft}px`);
+    const menuWidth = Math.min(340, width - 16);
+    const menuLeft = Math.max(left + 8, Math.min(buttonLeft + buttonWidth - menuWidth, left + width - menuWidth - 8));
+    setStyle(transferPanel, "width", `${menuWidth}px`);
+    setStyle(transferPanel, "left", `${menuLeft - buttonLeft}px`);
+    setStyle(transferPanel, "maxHeight", `${Math.max(0, buttonTop - top - 17)}px`);
+  }
+
+  function trackComposerPosition() {
+    positionTransferControl();
+    trackingFrame = requestAnimationFrame(trackComposerPosition);
+  }
+
+  function transferIcon(kind) {
+    const paths = {
+      transfer: '<path d="M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4"/>',
+      chevron: '<path d="m6 14 6-6 6 6"/>',
+      arrow: '<path d="M5 12h14m-6-6 6 6-6 6"/>'
+    };
+    return `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${paths[kind]}</svg>`;
+  }
+
   function mountTransferControl() {
     mountQueued = false;
     const composer = findComposer();
     if (!composer) {
+      trackedComposer = null;
       if (transferHost) transferHost.hidden = true;
       return;
     }
@@ -239,14 +347,15 @@
       transferHost.style.cssText = "position:fixed;z-index:2147483646;pointer-events:auto;";
       const shadow = transferHost.attachShadow({ mode: "open" });
       shadow.innerHTML = `<style>
-        :host{all:initial;color:var(--rt-text);font-family:var(--rt-font);font-size:13px}
+        :host{all:initial;color:var(--rt-text);font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.4;direction:ltr;text-align:left}
+        svg{display:block;flex:none;width:16px;height:16px}.chevron,.arrow{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px}
         *{box-sizing:border-box}button{font:inherit;cursor:pointer}button:disabled{cursor:wait;opacity:.55}button:focus-visible{outline:2px solid var(--rt-accent);outline-offset:2px}
-        .launcher{display:inline-flex;align-items:center;gap:8px;min-height:37px;padding:5px 10px 5px 5px;border:1px solid var(--rt-border);border-radius:999px;background:var(--rt-surface);color:var(--rt-text);box-shadow:0 3px 12px #0000001f;white-space:nowrap;transition:box-shadow .15s,transform .15s}
+        .launcher{display:flex;align-items:center;gap:8px;height:38px;padding:5px 10px 5px 5px;border:1px solid var(--rt-border);border-radius:999px;background:var(--rt-surface);color:var(--rt-text);box-shadow:0 3px 12px #0000001f;white-space:nowrap;transition:box-shadow .15s,transform .15s}
         .launcher:hover{box-shadow:0 6px 18px #00000026;transform:translateY(-1px)}
         .mark{display:grid;place-items:center;width:26px;height:26px;flex:none;border-radius:50%;background:var(--rt-accent);color:var(--rt-accent-text);font-size:15px;line-height:1}
         .label{font-size:12px;font-weight:700;letter-spacing:-.01em}.chevron{margin-left:1px;color:var(--rt-muted);font-size:13px}
         .menu{position:absolute;right:0;bottom:calc(100% + 9px);width:min(322px,calc(100vw - 20px));max-height:min(440px,calc(100vh - 24px));overflow:auto;padding:14px;border:1px solid var(--rt-border);border-radius:max(16px,var(--rt-radius));background:var(--rt-surface);color:var(--rt-text);box-shadow:0 16px 42px #0000002e}
-        .menu.below{top:calc(100% + 9px);bottom:auto}.menu[hidden],.copy[hidden]{display:none}
+        .menu{right:auto;min-height:0;overscroll-behavior:contain}.menu[hidden],.copy[hidden]{display:none}
         .eyebrow{margin:0 0 3px;color:var(--rt-muted);font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
         .head{padding:2px 2px 11px}.head strong{display:block;font-size:15px;letter-spacing:-.02em}.head small{display:block;margin-top:4px;color:var(--rt-muted);font-size:11px;line-height:1.35}
         .destinations{display:grid;gap:4px;padding:8px 0;border-top:1px solid var(--rt-border)}
@@ -256,15 +365,19 @@
         .avatar{display:grid;place-items:center;width:30px;height:30px;flex:none;border-radius:10px;font-size:12px;font-weight:750}
         .service-chatgpt{background:#dcefe7;color:#136449}.service-claude{background:#f5e2d7;color:#9c4a2d}.service-gemini{background:#e5ebff;color:#315fbe}
         .arrow{color:var(--rt-muted);font-size:16px}.foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 2px 1px;border-top:1px solid var(--rt-border);color:var(--rt-muted);font-size:10px}
+        .context-count{display:grid;gap:3px;min-width:0;line-height:1.4}.foot{align-items:flex-end;flex-wrap:wrap}.foot button{margin-left:auto}
         .foot button,.copy{padding:0;border:0;background:none;color:var(--rt-accent);font-size:11px;font-weight:700;white-space:nowrap}.foot button:hover,.copy:hover{text-decoration:underline}
         .status{margin:9px 2px 0;color:var(--rt-muted);font-size:11px;line-height:1.45}.status:empty{display:none}.copy{margin:8px 2px 0}
       </style>
-      <button type="button" class="launcher" aria-haspopup="dialog" aria-expanded="false" aria-label="Transfer this chat"><span class="mark" aria-hidden="true">⇄</span><span class="label">Transfer</span><span class="chevron" aria-hidden="true">⌄</span></button>
-      <section class="menu" role="dialog" aria-label="Transfer chat" hidden><div class="head"><p class="eyebrow">Chat transfer</p><strong>Continue this conversation</strong><small>Open a new chat with transfer context. Choose core memories separately when sending.</small></div><div class="destinations"></div><div class="foot"><span class="context-count">Checking context…</span><button type="button" class="memory-center">Memory Center →</button></div><p class="status" role="status" aria-live="polite"></p><button type="button" class="copy" hidden>Copy prepared prompt</button></section>`;
+      <button type="button" class="launcher" aria-haspopup="dialog" aria-expanded="false" aria-label="Transfer this chat"><span class="mark">${transferIcon("transfer")}</span><span class="label">Transfer</span><span class="chevron">${transferIcon("chevron")}</span></button>
+      <section class="menu" role="dialog" aria-label="Transfer chat" hidden><div class="head"><p class="eyebrow">Chat transfer</p><strong>Continue this conversation</strong><small>Start a new chat with your context carried over.</small></div><div class="destinations"></div><div class="foot"><span class="context-count">Checking context…</span><button type="button" class="memory-center">Memory Center</button></div><p class="status" role="status" aria-live="polite"></p><button type="button" class="copy" hidden>Copy prepared prompt</button></section>`;
       transferButton = shadow.querySelector(".launcher");
       transferPanel = shadow.querySelector(".menu");
       const list = shadow.querySelector(".destinations");
-      for (const destination of ["ChatGPT", "Claude", "Gemini"]) {
+      const renderDestinations = (messages) => {
+      list.replaceChildren();
+      for (const suggestion of destinationSuggestions(messages)) {
+        const destination = suggestion.name;
         const row = document.createElement("button");
         row.type = "button";
         row.className = "destination";
@@ -274,18 +387,19 @@
         const copy = document.createElement("span");
         copy.className = "destination-copy";
         const name = document.createElement("strong");
-        name.textContent = destination;
+        name.textContent = destination + (suggestion.recommended ? " · Suggested" : "");
         const description = document.createElement("small");
-        description.textContent = destination === service ? "Start a fresh chat here" : "Open an editable draft";
+        description.textContent = suggestion.description;
         copy.append(name, description);
         const arrow = document.createElement("span");
         arrow.className = "arrow";
         arrow.setAttribute("aria-hidden", "true");
-        arrow.textContent = "→";
+        arrow.innerHTML = transferIcon("arrow");
         row.append(avatar, copy, arrow);
         row.addEventListener("click", () => startInlineTransfer(destination));
         list.append(row);
       }
+      };
       transferButton.addEventListener("click", async () => {
         transferPanel.hidden = !transferPanel.hidden;
         transferButton.setAttribute("aria-expanded", String(!transferPanel.hidden));
@@ -293,11 +407,23 @@
           shadow.querySelector(".status").textContent = "";
           shadow.querySelector(".copy").hidden = true;
           const result = capture();
-          const messageCount = result.messages.filter((item) => ["user", "assistant"].includes(item.role)).length;
+          renderDestinations(result.messages);
+          positionTransferControl();
+          const showSummary = (count) => {
+            const summary = transferSummary(result, count);
+            const footer = shadow.querySelector(".context-count");
+            footer.replaceChildren(...Object.values(summary).map((text) => {
+              const line = document.createElement("span");
+              line.textContent = text;
+              return line;
+            }));
+            footer.title = "Counts reflect the currently rendered chat. Long transcripts are shortened. Uploaded files are not transferred; attach them again in the destination chat.";
+          };
+          showSummary(null);
           try {
-            const { count = 0, ragEnabled = false } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
-            shadow.querySelector(".context-count").textContent = `${messageCount} messages to transfer · ${count} core ${count === 1 ? "memory" : "memories"} available separately${ragEnabled ? " · semantic search on" : ""}`;
-          } catch { shadow.querySelector(".context-count").textContent = `${messageCount} messages`; }
+            const { count = 0 } = await chrome.runtime.sendMessage({ type: "INLINE_CONTEXT_STATUS" });
+            showSummary(count);
+          } catch { showSummary(null); }
         }
       });
       shadow.addEventListener("keydown", (event) => {
@@ -332,20 +458,10 @@
       "--rt-border": theme.border, "--rt-accent": theme.accent, "--rt-font": theme.fontFamily,
       "--rt-radius": theme.radius, "--rt-accent-text": theme.dark ? "#17202a" : "#ffffff"
     })) transferHost.style.setProperty(name, value);
-    const rect = composerAnchor(composer).getBoundingClientRect();
-    if (rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) {
-      transferHost.hidden = true;
-      return;
-    }
-    const top = rect.top >= 46 ? rect.top - 45 : rect.bottom + 8;
-    const buttonTop = Math.max(8, Math.min(innerHeight - 45, Math.round(top)));
-    transferHost.style.top = `${buttonTop}px`;
-    transferHost.style.right = `${Math.max(8, Math.round(innerWidth - rect.right + 8))}px`;
-    const spaceAbove = buttonTop - 14;
-    const spaceBelow = innerHeight - buttonTop - 55;
-    const below = spaceBelow > spaceAbove;
-    transferPanel.classList.toggle("below", below);
-    transferPanel.style.maxHeight = `${Math.max(120, (below ? spaceBelow : spaceAbove) - 8)}px`;
+    trackedComposer = composer;
+    trackedAnchor = composerAnchor(composer);
+    positionTransferControl();
+    if (!trackingFrame) trackingFrame = requestAnimationFrame(trackComposerPosition);
   }
 
   function scheduleTransferControl() {

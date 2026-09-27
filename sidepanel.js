@@ -365,7 +365,8 @@ function renderAutoSettings() {
   $("auto-memory-status").textContent = state.autoMemorySettings.enabled ? "On" : "Off";
   $("auto-memory-key").placeholder = state.autoMemorySettings.apiKey ? "•".repeat(40) : "Enter your API key";
   $("auto-memory-key").classList.toggle("has-saved-key", !!state.autoMemorySettings.apiKey);
-  $("key-state").textContent = state.autoMemorySettings.apiKey ? "Key saved." : "No key saved.";
+  $("key-state").textContent = state.autoMemorySettings.apiKey ? "Key saved in this browser. Leave blank to keep it, or enter a replacement." : "Add your key to enable automatic saving or semantic search.";
+  $("remove-auto-key-btn").disabled = !state.autoMemorySettings.apiKey;
   $("auto-memory-error").textContent = state.autoMemoryLastError ? `Last scan failed: ${state.autoMemoryLastError}` : "";
   $("auto-memory-error").classList.toggle("hidden", !state.autoMemoryLastError);
 }
@@ -533,7 +534,7 @@ async function removeAutoKey() {
   renderAutoSettings();
   renderRagSettings();
   await chrome.runtime.sendMessage({ type: "RAG_CLEAR" }).catch(() => {});
-  status("API key removed and automatic memory disabled.");
+  status("API key removed. Automatic saving and semantic search are off.");
 }
 
 function editMemory(memory) {

@@ -128,12 +128,15 @@
         </section>
         <section class="card">
           <div class="section-heading"><h2>Automatic saving</h2><span id="auto-memory-status" class="state-pill">Off</span></div>
-          <label class="toggle-label"><input id="auto-memory-enabled" type="checkbox"> Save useful facts automatically</label>
+          <p class="fineprint">Add your key for automatic saving and semantic search. Choose your options, then save your changes.</p>
           <label for="auto-memory-key">OpenAI API key</label>
           <input id="auto-memory-key" type="password" autocomplete="off" placeholder="Enter your API key">
           <p id="key-state" class="fineprint">No key saved.</p>
+          <label class="toggle-label"><input id="auto-memory-enabled" type="checkbox"> Save useful facts automatically</label>
+          <p class="fineprint">When on, visible chats are sent to OpenAI to extract memories. When off, you can still add memories yourself.</p>
           <p id="auto-memory-error" class="save-state unsaved hidden" role="status"></p>
-          <div class="action-row"><button id="save-auto-settings-btn" class="button primary">Save settings</button><button id="remove-auto-key-btn" class="button subtle">Remove key</button></div>
+          <div class="action-row"><button id="save-auto-settings-btn" class="button primary">Save changes</button><button id="remove-auto-key-btn" class="button subtle">Disconnect key &amp; turn off</button></div>
+          <p class="fineprint">Disconnecting turns off automatic saving and semantic search and clears the search index. Your saved memories remain.</p>
           <p class="fineprint">API charges may apply. You can edit or delete saved memories anytime.</p>
         </section>
       </section>
